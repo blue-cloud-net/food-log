@@ -29,6 +29,7 @@ type Recipe struct {
 	Rating          int          `json:"rating"`     // 1-5
 	Tags            []string     `json:"tags"`
 	Images          []string     `json:"images"`
+	IsFavorited     bool         `json:"is_favorited"`
 	CreatedAt       time.Time    `json:"created_at"`
 	UpdatedAt       time.Time    `json:"updated_at"`
 }
