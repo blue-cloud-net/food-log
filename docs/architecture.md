@@ -60,6 +60,7 @@ graph TB
 | 认证 | JWT (golang-jwt) | 无状态认证，适合前后端分离 + PWA |
 | 密码加密 | bcrypt | 安全的密码哈希算法 |
 | 图片处理 | imaging | 纯 Go 图片缩放/格式转换，无 CGO 依赖 |
+| AI 标签/识别 | OpenAI 兼容协议 + Ollama | 通用 Provider 接口（chat + vision），词典优先 + AI 兜底 |
 | 数据库 | PostgreSQL 16 | 功能完善，JSONB 支持灵活的结构化数据 |
 | 部署 | Docker Compose | 一键启动数据库 + 后端 + 前端 |
 
@@ -159,6 +160,44 @@ graph LR
 
 存储规则：`uploads/YYYY/MM/uuid.jpg`（原图）与 `uploads/YYYY/MM/uuid_thumb.jpg`（缩略图）。
 
+## 7.1 自动标签与 AI 识别
+
+### 自动标签流程
+
+```mermaid
+graph TD
+    A[创建/更新菜谱] --> B[提取食材名称]
+    B --> C[词典匹配]
+    C --> D{命中荤素/食材标签?}
+    D -->|是| E[规则推导: 快手/汤/辣等]
+    D -->|否| F[调用 AI Provider 兜底]
+    E --> G[与手动标签合并去重]
+    F --> G
+    G --> H[写入 recipes.tags]
+    F -.AI 未配置/超时/失败.-> G
+```
+
+- **词典**（`internal/tagging/dictionary.go`）：食材关键词 → 标签，含荤素/食材/场景/时段/菜系/口味六类预设词表；荤素互斥（蛋归荤）
+- **核心**（`internal/tagging/tagging.go`）：`Generate` 匹配 → 规则推导 → 手动合并去重；AI 兜底失败静默降级
+- **词表接口** `GET /api/recipes/tags` 供前端选择器使用
+
+### AI Provider 架构
+
+```mermaid
+graph LR
+    A[tagging.Completer / 识别接口] --> B[Provider 接口]
+    B --> C[OpenAI 兼容实现]
+    B --> D[Ollama 实现]
+    C --> E[OpenAI/DeepSeek/通义/智谱]
+    D --> F[本地 llava/qwen2.5-vl]
+```
+
+- 通过 `AI_PROVIDER`（openai | ollama）选择实现；`AI_BASE_URL`/`AI_API_KEY`/`AI_MODEL`/`AI_TIMEOUT` 配置
+- OpenAI 兼容实现：标准库 `net/http` 直连 `/chat/completions`，支持文本与 `image_url` 视觉输入
+- Ollama 实现：原生 `/api/chat`，图片下载转 base64 传 `images` 字段
+- 前端可通过 `X-AI-Key` 请求头覆盖 API Key；`AI_API_KEY` 为空即禁用 AI
+- 图片识别：`POST /api/recipes/ai/recognize` 识别菜名/食材/标签，回填菜谱表单
+
 ## 8. 安全设计
 
 - 密码使用 bcrypt 加盐哈希存储
@@ -195,6 +234,8 @@ food-log/
 │   │   ├── service/         # 业务逻辑
 │   │   ├── handler/         # HTTP 处理器
 │   │   ├── middleware/      # 中间件
+│   │   ├── tagging/         # 自动标签（词典 + 核心逻辑）
+│   │   ├── ai/              # AI Provider（接口 + OpenAI/Ollama 实现）
 │   │   └── router/          # 路由
 │   ├── migrations/          # SQL 迁移
 │   └── uploads/             # 上传图片

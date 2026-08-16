@@ -123,7 +123,7 @@ Authorization: Bearer <token>
 
 ### 3.1 列表
 
-`GET /api/recipes?page=1&page_size=10&keyword=&difficulty=&tag=&sort=created_at`
+`GET /api/recipes?page=1&page_size=10&keyword=&difficulty=&tag=&sort=created_at&favorite=false`
 
 | 参数 | 类型 | 说明 |
 |---|---|---|
@@ -131,8 +131,9 @@ Authorization: Bearer <token>
 | page_size | int | 每页数量，默认 10，最大 50 |
 | keyword | string | 菜名搜索 |
 | difficulty | string | 难度筛选 easy/medium/hard |
-| tag | string | 标签筛选 |
+| tag | string | 标签筛选（如 `素菜`） |
 | sort | string | created_at/rating/cook_time |
+| favorite | bool | `true` 时只返回已收藏菜谱 |
 
 响应 `data`：
 ```json
@@ -149,6 +150,7 @@ Authorization: Bearer <token>
       "rating": 5,
       "tags": ["川菜", "下饭菜"],
       "images": ["/uploads/2026/08/xxx.jpg", "/uploads/2026/08/xxx_thumb.jpg"],
+      "is_favorited": true,
       "created_at": "2026-08-11T10:00:00Z",
       "updated_at": "2026-08-11T10:00:00Z"
     }
@@ -197,6 +199,66 @@ Authorization: Bearer <token>
 `DELETE /api/recipes/:id` 🔒
 
 响应 `data`：`{ "deleted": true }`
+
+### 3.6 自动标签说明
+
+创建/更新菜谱时，后端会依据食材清单自动生成标签（荤菜/素菜、牛肉、鱼、海鲜、豆制品、蔬菜、蛋、快手、辣、汤等），与请求中手动 `tags` 合并去重后保存。词典未识别时若已配置 AI 则调用 AI 兜底（失败静默降级，仅保留词典结果）。
+
+### 3.7 预设标签词表
+
+`GET /api/recipes/tags` 🔒
+
+响应 `data`：按分类返回预设词表，供前端标签选择器/自动补全使用。
+```json
+[
+  { "name": "荤素", "tags": ["荤菜", "素菜"] },
+  { "name": "食材", "tags": ["牛肉", "猪肉", "鸡肉", "羊肉", "鸭肉", "鱼", "海鲜", "虾", "蟹", "蛋", "豆制品", "蔬菜", "菌菇", "主食"] },
+  { "name": "场景", "tags": ["快手", "汤", "凉菜", "面食", "甜点"] },
+  { "name": "时段", "tags": ["早餐", "午餐", "晚餐", "夜宵"] },
+  { "name": "菜系", "tags": ["川菜", "粤菜", "湘菜", "鲁菜", "苏菜", "浙菜", "闽菜", "徽菜", "东北菜", "西北菜"] },
+  { "name": "口味", "tags": ["辣", "清淡", "甜", "酸", "咸鲜"] }
+]
+```
+
+### 3.8 随机选菜（今天吃什么）
+
+`GET /api/recipes/random?tag=&difficulty=` 🔒
+
+从符合条件的菜谱中随机返回一条。无匹配时返回 404。响应 `data` 为完整菜谱对象。
+
+### 3.9 收藏 / 取消收藏
+
+`POST /api/recipes/:id/favorite` 🔒
+
+响应 `data`：`{ "favorited": true }`
+
+`DELETE /api/recipes/:id/favorite` 🔒
+
+响应 `data`：`{ "favorited": false }`
+
+列表与详情接口均返回 `is_favorited` 字段；列表可通过 `favorite=true` 过滤。
+
+### 3.10 AI 图片识别
+
+`POST /api/recipes/ai/recognize` 🔒
+
+请求：
+```json
+{ "image_url": "/uploads/2026/08/xxx.jpg" }
+```
+
+`image_url` 支持相对路径（自动拼接请求 Host）或完整 URL。可选请求头 `X-AI-Key` 覆盖后端配置的 API Key（OpenAI 兼容提供者）。
+
+响应 `data`（识别结果，用于回填菜谱表单）：
+```json
+{
+  "name": "清蒸鲈鱼",
+  "ingredients": ["鲈鱼", "姜", "葱"],
+  "tags": ["荤菜", "鱼"]
+}
+```
+
+未配置 AI 或不支持视觉模型时返回 400 明确提示。
 
 ## 4. 餐厅模块 `/restaurants`
 
@@ -339,7 +401,49 @@ Content-Type: `multipart/form-data`
 
 上传后的图片通过静态服务直接访问：`GET /uploads/2026/08/uuid.jpg`（无需认证，浏览器可直接展示）。
 
-## 7. 数据模型速查
+## 7. 全局搜索 `/search`
+
+### 7.1 搜索
+
+`GET /api/search?keyword=牛肉` 🔒
+
+聚合搜索菜谱、餐厅、菜品，各类返回前 10 条。响应 `data`：
+```json
+{
+  "recipes": [ { "id": "uuid", "name": "土豆炖牛肉", "tags": [...] } ],
+  "restaurants": [ { "id": "uuid", "name": "牛肉面馆", "cuisine_type": "面食" } ],
+  "dishes": [ { "id": "uuid", "name": "红烧牛肉", "restaurant_id": "uuid" } ]
+}
+```
+
+## 8. 数据导出 / 导入 `/export`
+
+### 8.1 导出 JSON（完整备份）
+
+`GET /api/export?format=json` 🔒
+
+直接返回备份文件（Content-Disposition 提示下载），内容为 `ExportData` 格式（见下），包含菜谱/餐厅/菜品/收藏。
+
+### 8.2 导出 CSV（菜谱单表）
+
+`GET /api/export?format=csv` 🔒
+
+返回 `recipes.csv`，列为：菜名、描述、食材、步骤、耗时(分钟)、难度、评分、标签、创建时间。
+
+### 8.3 导入恢复
+
+`POST /api/export/import?mode=append` 🔒
+
+`body` 直接为导出的 JSON 备份内容。
+
+| mode | 说明 |
+|---|---|
+| append（默认） | 按菜名去重追加，同名菜谱跳过 |
+| overwrite | 先清空当前用户全部数据（收藏/菜品/菜谱/餐厅）再导入 |
+
+响应 `data`：`{ "imported": true, "mode": "append" }`
+
+## 9. 数据模型速查
 
 ```typescript
 interface Ingredient { name: string; amount: string; unit: string }
@@ -349,8 +453,9 @@ interface Recipe {
   id: string; name: string; description?: string;
   ingredients: Ingredient[]; steps: Step[];
   cook_time_minutes?: number;
-  difficulty: 'easy' | 'medium' | 'hard';
+  difficulty: 'easy' | 'medium' | 'hard' | '';
   rating?: number; tags: string[]; images: string[];
+  is_favorited: boolean;
   created_at: string; updated_at: string;
 }
 

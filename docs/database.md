@@ -128,6 +128,18 @@ erDiagram
 | eaten_at | DATE | | 就餐日期 |
 | created_at | TIMESTAMPTZ | | |
 
+### 2.5 recipe_favorites — 菜谱收藏表
+
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| id | UUID | PK | 主键 |
+| user_id | UUID | FK → users(id), NOT NULL | 收藏用户 |
+| recipe_id | UUID | FK → recipes(id), NOT NULL | 被收藏菜谱 |
+| created_at | TIMESTAMPTZ | DEFAULT now() | 收藏时间 |
+
+- `UNIQUE(user_id, recipe_id)`：同一用户对同一菜谱只收藏一次（接口幂等）
+- 索引 `idx_recipe_favorites_user (user_id, created_at DESC)` 支持收藏列表与过滤查询
+
 ## 3. 索引策略
 
 ```sql
@@ -162,9 +174,12 @@ CREATE INDEX idx_dishes_restaurant ON dishes(restaurant_id, eaten_at DESC);
 |---|---|
 | `server/migrations/001_init.sql` | 建表 + 索引 + 触发器 |
 | `server/migrations/002_seed.sql` | 测试种子数据 |
+| `server/migrations/003_favorites.sql` | 菜谱收藏表 |
 
 ## 6. 迁移记录
 
 | 版本 | 日期 | 描述 |
 |---|---|---|
 | 001 | 2026-08-11 | 初始建表 |
+| 002 | 2026-08-11 | 种子数据 |
+| 003 | 2026-08-16 | 菜谱收藏表 |
