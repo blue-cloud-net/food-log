@@ -154,3 +154,46 @@ func nullableFloat(v float64) any {
 	}
 	return v
 }
+
+// ListAll 返回用户全部餐厅（导出用）
+func (r *RestaurantRepo) ListAll(ctx context.Context, userID string) ([]*model.Restaurant, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT `+restaurantCols+` FROM restaurants r WHERE r.user_id = $1 ORDER BY r.created_at`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	list := []*model.Restaurant{}
+	for rows.Next() {
+		rst, err := scanRestaurant(rows)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, rst)
+	}
+	return list, rows.Err()
+}
+
+// SearchByName 按店名/地址/菜系模糊搜索（全局搜索用）
+func (r *RestaurantRepo) SearchByName(ctx context.Context, userID, keyword string, limit int) ([]*model.Restaurant, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT `+restaurantCols+` FROM restaurants r
+		 WHERE r.user_id = $1 AND (r.name ILIKE $2 OR r.address ILIKE $2 OR r.cuisine_type ILIKE $2)
+		 ORDER BY r.created_at DESC LIMIT $3`,
+		userID, "%"+keyword+"%", limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	list := []*model.Restaurant{}
+	for rows.Next() {
+		rst, err := scanRestaurant(rows)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, rst)
+	}
+	return list, rows.Err()
+}

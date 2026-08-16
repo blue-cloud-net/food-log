@@ -113,3 +113,44 @@ func nullableString(v *string) any {
 	}
 	return *v
 }
+
+// ListAll 返回用户全部菜品（导出用）
+func (r *DishRepo) ListAll(ctx context.Context, userID string) ([]*model.Dish, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT `+dishCols+` FROM dishes WHERE user_id = $1 ORDER BY created_at`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	list := []*model.Dish{}
+	for rows.Next() {
+		d, err := scanDish(rows)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, d)
+	}
+	return list, rows.Err()
+}
+
+// SearchByName 按菜名模糊搜索（全局搜索用）
+func (r *DishRepo) SearchByName(ctx context.Context, userID, keyword string, limit int) ([]*model.Dish, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT `+dishCols+` FROM dishes WHERE user_id = $1 AND name ILIKE $2 ORDER BY created_at DESC LIMIT $3`,
+		userID, "%"+keyword+"%", limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	list := []*model.Dish{}
+	for rows.Next() {
+		d, err := scanDish(rows)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, d)
+	}
+	return list, rows.Err()
+}
