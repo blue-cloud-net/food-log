@@ -1,0 +1,54 @@
+:root {
+  --fl-primary: #ff6b35;
+  --fl-primary-light: #ff9a66;
+  --fl-bg: #f7f8fa;
+  --fl-card-radius: 12px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--fl-bg);
+  color: #303133;
+  font-family: 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 主色覆盖 Element Plus */
+.el-button--primary {
+  --el-button-bg-color: var(--fl-primary);
+  --el-button-border-color: var(--fl-primary);
+  --el-button-hover-bg-color: var(--fl-primary-light);
+  --el-button-hover-border-color: var(--fl-primary-light);
+}
+
+.el-tabs__item.is-active,
+.el-tabs__item:hover {
+  color: var(--fl-primary);
+}
+
+.el-tabs__active-bar {
+  background-color: var(--fl-primary);
+}
+
+a {
+  color: var(--fl-primary);
+  text-decoration: none;
+}
+
+/* 移动端底部留白（给 TabBar 让位） */
+@media (max-width: 767px) {
+  .page-container {
+    padding-bottom: 72px;
+  }
+}
