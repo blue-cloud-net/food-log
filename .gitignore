@@ -1,0 +1,32 @@
+# ===== 环境变量 =====
+.env
+.env.local
+.env.*.local
+
+# ===== 前端 =====
+node_modules/
+dist/
+client/dist/
+*.local
+.vite/
+
+# ===== Go 后端 =====
+server/bin/
+server/uploads/*
+!server/uploads/.gitkeep
+*.exe
+*.test
+*.out
+
+# ===== 日志与临时文件 =====
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# ===== 数据 =====
+pgdata/
+*.sqlite
