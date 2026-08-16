@@ -1,5 +1,7 @@
 package tagging
 
+import "strings"
+
 // TagCategory 预设标签分类（供前端选择器与 GET /api/recipes/tags 使用）
 type TagCategory struct {
 	Name string   `json:"name"` // 分类名
