@@ -116,3 +116,40 @@ func (h *InventoryHandler) Delete(c *gin.Context) {
 	}
 	httpx.RespondOK(c, gin.H{"deleted": true})
 }
+
+type inventoryBatchDeleteRequest struct {
+	IDs []string `json:"ids" binding:"required,min=1,max=200"`
+}
+// BatchDelete 批量删除库存食材（仅限本人条目）
+func (h *InventoryHandler) BatchDelete(c *gin.Context) {
+	var req inventoryBatchDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.RespondError(c, http.StatusBadRequest, httpx.CodeBadRequest, "参数错误: "+err.Error())
+		return
+	}
+	n, err := h.inventoryService.BatchDelete(c.Request.Context(), httpx.GetUserID(c), req.IDs)
+	if err != nil {
+		httpx.RespondErrorWithErr(c, err)
+		return
+	}
+	httpx.RespondOK(c, gin.H{"deleted": n})
+}
+
+type inventoryConsumeRequest struct {
+	Quantity float64 `json:"quantity" binding:"required,gt=0"`
+}
+
+// Consume 消耗一定数量（吃掉 / 用掉）；减到 0 自动移出库存
+func (h *InventoryHandler) Consume(c *gin.Context) {
+	var req inventoryConsumeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.RespondError(c, http.StatusBadRequest, httpx.CodeBadRequest, "参数错误: "+err.Error())
+		return
+	}
+	res, err := h.inventoryService.Consume(c.Request.Context(), httpx.GetUserID(c), c.Param("id"), req.Quantity)
+	if err != nil {
+		httpx.RespondErrorWithErr(c, err)
+		return
+	}
+	httpx.RespondOK(c, gin.H{"quantity": res.Remaining, "removed": res.Removed})
+}

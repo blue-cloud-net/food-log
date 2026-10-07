@@ -95,6 +95,63 @@ func (s *InventoryService) Delete(ctx context.Context, userID, id string) error 
 	return s.repo.Delete(ctx, id)
 }
 
+// BatchDelete 批量删除库存条目（仅限本人；id 去重后一次性删除，返回删除数量）
+func (s *InventoryService) BatchDelete(ctx context.Context, userID string, ids []string) (int64, error) {
+	uniq := make([]string, 0, len(ids))
+	seen := make(map[string]bool, len(ids))
+	for _, raw := range ids {
+		id := strings.TrimSpace(raw)
+		if id == "" || seen[id] {
+			continue
+		}
+		if !uuidRe.MatchString(id) {
+			return 0, fmt.Errorf("%w: 条目 id 无效: %s", ErrInventoryInvalid, id)
+		}
+		seen[id] = true
+		uniq = append(uniq, id)
+	}
+	if len(uniq) == 0 {
+		return 0, fmt.Errorf("%w: 请选择要删除的条目", ErrInventoryInvalid)
+	}
+	if len(uniq) > maxBatchDeleteInventory {
+		return 0, fmt.Errorf("%w: 一次最多删除 %d 条", ErrInventoryInvalid, maxBatchDeleteInventory)
+	}
+	return s.repo.DeleteMany(ctx, userID, uniq)
+}
+
+// Consume 消耗一定数量（吃掉 / 用掉）；数量减到 0 时自动移出库存。
+// 归属校验与「不存在」区分同 Get：不存在 → ErrNotFound，非本人 → ErrForbidden。
+func (s *InventoryService) Consume(ctx context.Context, userID, id string, amount float64) (*ConsumeResult, error) {
+	it, err := s.Get(ctx, userID, id)
+	if err != nil {
+		return nil, err
+	}
+	if amount <= 0 {
+		return nil, fmt.Errorf("%w: 消耗数量需大于 0", ErrInventoryInvalid)
+	}
+	amount = math.Round(amount*100) / 100
+	if amount > it.Quantity {
+		return nil, fmt.Errorf("%w: 消耗数量不能超过剩余数量（%v）", ErrInventoryInvalid, it.Quantity)
+	}
+
+	remaining, removed, ok, err := s.repo.Consume(ctx, userID, id, amount)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		// 并发下数量已被其它请求改小
+		return nil, fmt.Errorf("%w: 数量已变化，请刷新后重试", ErrInventoryInvalid)
+	}
+
+	res := &ConsumeResult{Remaining: remaining, Removed: removed}
+	if !removed {
+		if res.Item, err = s.repo.GetByID(ctx, id); err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
 // prepare 归一化并校验条目字段，同时确认存放位置对该用户可见
 func (s *InventoryService) prepare(ctx context.Context, userID string, it *model.InventoryItem) error {
 	it.Name = strings.TrimSpace(it.Name)

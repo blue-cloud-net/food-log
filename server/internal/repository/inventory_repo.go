@@ -147,6 +147,49 @@ func (r *InventoryRepo) Delete(ctx context.Context, id string) error {
 	return err
 }
 
+// DeleteMany 批量删除该用户的库存条目，返回实际删除数量
+func (r *InventoryRepo) DeleteMany(ctx context.Context, userID string, ids []string) (int64, error) {
+	ct, err := r.pool.Exec(ctx,
+		`DELETE FROM inventory_items WHERE user_id = $1::uuid AND id = ANY($2::uuid[])`, userID, ids)
+	if err != nil {
+		return 0, err
+	}
+	return ct.RowsAffected(), nil
+}
+
+// Consume 消耗 amount 数量：仅在条目属于该用户且剩余数量不少于 amount 时生效。
+// 返回剩余数量；ok = false 表示条件未命中（条目不存在 / 不属于该用户 / 数量不足）。
+// 剩余数量减到 0 时直接删除该条目，removed = true。
+func (r *InventoryRepo) Consume(ctx context.Context, userID, id string, amount float64) (remaining float64, removed bool, ok bool, err error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return 0, false, false, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // 提交成功后回滚为无操作
+
+	if err = tx.QueryRow(ctx,
+		`UPDATE inventory_items SET quantity = quantity - $3, updated_at = now()
+		 WHERE id = $1::uuid AND user_id = $2::uuid AND quantity >= $3
+		 RETURNING quantity`, id, userID, amount).Scan(&remaining); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, false, false, nil
+		}
+		return 0, false, false, err
+	}
+
+	if remaining <= 0 {
+		if _, err = tx.Exec(ctx, `DELETE FROM inventory_items WHERE id = $1::uuid`, id); err != nil {
+			return 0, false, false, err
+		}
+		removed = true
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return 0, false, false, err
+	}
+	return remaining, removed, true, nil
+}
+
 func scanInventoryItemRow(row pgx.Row, out *model.InventoryItem) error {
 	it, err := scanInventoryItem(row)
 	if err != nil {

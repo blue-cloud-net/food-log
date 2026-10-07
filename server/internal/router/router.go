@@ -172,6 +172,9 @@ func Setup(cfg *config.Config, pool *pgxpool.Pool) *gin.Engine {
 		{
 			inventory.GET("", inventoryHandler.List)
 			inventory.POST("", inventoryHandler.Create)
+			// 静态路由需在 /:id 之前注册，避免被参数路由捕获
+			inventory.POST("/batch-delete", inventoryHandler.BatchDelete)
+			inventory.POST("/:id/consume", inventoryHandler.Consume)
 			inventory.GET("/:id", inventoryHandler.Get)
 			inventory.PUT("/:id", inventoryHandler.Update)
 			inventory.DELETE("/:id", inventoryHandler.Delete)
