@@ -14,10 +14,11 @@ import (
 const (
 	KindRecipe     = "recipe"
 	KindRestaurant = "restaurant"
+	KindInventory  = "inventory"
 )
 
 // Kinds 支持的图片用途
-var Kinds = []string{KindRecipe, KindRestaurant}
+var Kinds = []string{KindRecipe, KindRestaurant, KindInventory}
 
 // IsValidKind 校验图片用途是否受支持
 func IsValidKind(kind string) bool {
@@ -30,7 +31,7 @@ func IsValidKind(kind string) bool {
 }
 
 // EnsureDirs 创建数据目录骨架
-// 目录结构：{DATA_DIR}/{credentials,tmp,images/{recipe,restaurant}}
+// 目录结构：{DATA_DIR}/{credentials,tmp,images/{recipe,restaurant,inventory}}
 func EnsureDirs(cfg *config.Config) error {
 	type dir struct {
 		path string

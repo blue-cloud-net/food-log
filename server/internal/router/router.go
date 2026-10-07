@@ -39,6 +39,8 @@ func Setup(cfg *config.Config, pool *pgxpool.Pool) *gin.Engine {
 	favoriteRepo := repository.NewFavoriteRepo(pool)
 	tagRepo := repository.NewTagRepo(pool)
 	shopTagRepo := repository.NewShopTagRepo(pool)
+	storageLocationRepo := repository.NewStorageLocationRepo(pool)
+	inventoryRepo := repository.NewInventoryRepo(pool)
 
 	// AI Provider（未配置则 nil，自动标签/识别静默降级或明确报错）
 	var aiProvider ai.Provider
@@ -53,6 +55,8 @@ func Setup(cfg *config.Config, pool *pgxpool.Pool) *gin.Engine {
 	shopTagService := service.NewShopTagService(shopTagRepo)
 	recipeService := service.NewRecipeService(pool, recipeRepo, favoriteRepo, tagRepo, tagService)
 	restaurantService := service.NewRestaurantService(pool, restaurantRepo, dishRepo, shopTagRepo, shopTagService)
+	storageLocationService := service.NewStorageLocationService(storageLocationRepo)
+	inventoryService := service.NewInventoryService(inventoryRepo, storageLocationService)
 	uploadService := service.NewUploadService(cfg)
 	searchService := service.NewSearchService(recipeRepo, restaurantRepo, dishRepo)
 	exportService := service.NewExportService(pool, recipeRepo, restaurantRepo, dishRepo, favoriteRepo, tagRepo, tagService, shopTagRepo, shopTagService)
@@ -62,6 +66,8 @@ func Setup(cfg *config.Config, pool *pgxpool.Pool) *gin.Engine {
 	tagHandler := handler.NewTagHandler(tagService)
 	shopTagHandler := handler.NewShopTagHandler(shopTagService)
 	restaurantHandler := handler.NewRestaurantHandler(restaurantService)
+	storageLocationHandler := handler.NewStorageLocationHandler(storageLocationService)
+	inventoryHandler := handler.NewInventoryHandler(inventoryService)
 	uploadHandler := handler.NewUploadHandler(uploadService)
 	searchHandler := handler.NewSearchHandler(searchService)
 	exportHandler := handler.NewExportHandler(exportService)
@@ -152,6 +158,23 @@ func Setup(cfg *config.Config, pool *pgxpool.Pool) *gin.Engine {
 			dishTagCategories.POST("", shopTagHandler.CreateCategory(repository.ShopTagDomainDish))
 			dishTagCategories.PUT("/:id", shopTagHandler.UpdateCategory(repository.ShopTagDomainDish))
 			dishTagCategories.DELETE("/:id", shopTagHandler.DeleteCategory(repository.ShopTagDomainDish))
+		}
+
+		// 库存食材（存放位置字典 + 条目）
+		storageLocations := api.Group("/storage-locations", authMW)
+		{
+			storageLocations.GET("", storageLocationHandler.List)
+			storageLocations.POST("", storageLocationHandler.Create)
+			storageLocations.PUT("/:id", storageLocationHandler.Update)
+			storageLocations.DELETE("/:id", storageLocationHandler.Delete)
+		}
+		inventory := api.Group("/inventory", authMW)
+		{
+			inventory.GET("", inventoryHandler.List)
+			inventory.POST("", inventoryHandler.Create)
+			inventory.GET("/:id", inventoryHandler.Get)
+			inventory.PUT("/:id", inventoryHandler.Update)
+			inventory.DELETE("/:id", inventoryHandler.Delete)
 		}
 
 		// 全局搜索
