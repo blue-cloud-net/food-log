@@ -25,8 +25,27 @@
         <el-option label="中等" value="medium" />
         <el-option label="困难" value="hard" />
       </el-select>
-      <el-select v-model="filters.tag" placeholder="标签" clearable filterable class="w-30 md:flex-1 md:min-w-110px">
-        <el-option v-for="t in tagsStore.allTags" :key="t" :label="t" :value="t" />
+      <el-select
+        v-model="filters.tag"
+        placeholder="菜谱标签"
+        clearable
+        filterable
+        class="w-30 md:flex-1 md:min-w-110px"
+      >
+        <el-option-group v-for="g in tagsStore.groupedOptions" :key="g.label" :label="g.label">
+          <el-option v-for="o in g.options" :key="o.value" :label="o.label" :value="o.value" />
+        </el-option-group>
+      </el-select>
+      <el-select
+        v-model="filters.ingredientTag"
+        placeholder="食材标签"
+        clearable
+        filterable
+        class="w-30 md:flex-1 md:min-w-110px"
+      >
+        <el-option-group v-for="g in tagsStore.groupedOptions" :key="g.label" :label="g.label">
+          <el-option v-for="o in g.options" :key="o.value" :label="o.label" :value="o.value" />
+        </el-option-group>
       </el-select>
       <el-select v-model="filters.sort" placeholder="排序" clearable class="w-30 md:flex-1 md:min-w-110px">
         <el-option label="最新创建" value="created_at" />
@@ -79,12 +98,14 @@ const filters = reactive<{
   keyword: string
   difficulty: string
   tag: string
+  ingredientTag: string
   sort: string
   favorite: boolean
 }>({
   keyword: '',
   difficulty: '',
   tag: '',
+  ingredientTag: '',
   sort: '',
   favorite: false
 })
@@ -98,6 +119,7 @@ async function load(p = 1) {
       keyword: filters.keyword || undefined,
       difficulty: filters.difficulty || undefined,
       tag: filters.tag || undefined,
+      ingredient_tag: filters.ingredientTag || undefined,
       sort: filters.sort || undefined,
       favorite: filters.favorite || undefined
     })
@@ -111,7 +133,10 @@ async function load(p = 1) {
 
 async function onRandom() {
   try {
-    const rec = await randomRecipe(filters.tag ? { tag: filters.tag } : {})
+    const rec = await randomRecipe({
+      tag: filters.tag || undefined,
+      ingredient_tag: filters.ingredientTag || undefined
+    })
     router.push(`/recipes/${rec.id}`)
   } catch {
     /* 无匹配时拦截器已提示 */
@@ -119,7 +144,7 @@ async function onRandom() {
 }
 
 watch(
-  () => [filters.difficulty, filters.tag, filters.sort, filters.favorite],
+  () => [filters.difficulty, filters.tag, filters.ingredientTag, filters.sort, filters.favorite],
   () => load(1)
 )
 

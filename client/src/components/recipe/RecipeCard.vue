@@ -36,15 +36,15 @@
         </el-tag>
         <RatingStars v-if="recipe.rating" :model-value="recipe.rating" disabled />
       </div>
-      <div class="flex flex-wrap gap-1.5">
+      <div v-if="recipe.tags.length" class="flex flex-wrap gap-1.5">
         <el-tag
-          v-for="t in recipe.tags.slice(0, 4)"
-          :key="t"
+          v-for="id in recipe.tags.slice(0, 4)"
+          :key="id"
           size="small"
-          :type="tagColor(tagsStore.categories, t)"
+          :type="tagsStore.tagColor(id)"
           effect="light"
         >
-          {{ t }}
+          {{ tagsStore.tagName(id) }}
         </el-tag>
       </div>
     </div>
@@ -57,7 +57,6 @@ import { useRouter } from 'vue-router'
 import type { Recipe } from '@/api/types'
 import { useTagsStore } from '@/stores/tags'
 import { difficultyTagType, difficultyText } from '@/utils/format'
-import { tagColor } from '@/utils/tags'
 import RatingStars from './RatingStars.vue'
 
 const props = defineProps<{ recipe: Recipe }>()

@@ -6,7 +6,10 @@ export interface RecipeQuery {
   page_size?: number
   keyword?: string
   difficulty?: string
+  /** 菜谱级标签 id */
   tag?: string
+  /** 食材级标签 id */
+  ingredient_tag?: string
   sort?: string
   favorite?: boolean
 }
@@ -35,7 +38,7 @@ export function getTagCategories() {
   return http.get('/recipes/tags') as Promise<TagCategory[]>
 }
 
-export function randomRecipe(params: { tag?: string; difficulty?: string } = {}) {
+export function randomRecipe(params: { tag?: string; ingredient_tag?: string; difficulty?: string } = {}) {
   return http.get('/recipes/random', { params }) as Promise<Recipe>
 }
 

@@ -22,7 +22,10 @@ export interface Recipe {
   cook_time_minutes: number
   difficulty: '' | 'easy' | 'medium' | 'hard'
   rating: number
+  /** 菜谱级标签 id（用户手选） */
   tags: string[]
+  /** 食材级标签 id（服务端按规则自动派生，只读） */
+  ingredient_tags: string[]
   images: string[]
   is_favorited: boolean
   created_at: string
@@ -81,9 +84,28 @@ export interface UserProfile {
   updated_at: string
 }
 
-export interface TagCategory {
+export interface Tag {
+  id: string
+  category_id: string
+  /** 为空表示全局预设标签，否则为该用户私有自定义标签 */
+  owner_id?: string
   name: string
-  tags: string[]
+  /** 同组标签在选择器内互斥（如荤菜/素菜同为 diet） */
+  mutex_group?: string
+  sort_order: number
+  is_system: boolean
+}
+
+export interface TagCategory {
+  id: string
+  /** 为空表示全局预设分类 */
+  owner_id?: string
+  name: string
+  /** el-tag 色型：primary/success/warning/danger/info */
+  color: string
+  sort_order: number
+  is_system: boolean
+  tags: Tag[]
 }
 
 export interface SearchResult {

@@ -30,9 +30,21 @@
       <!-- 头部 -->
       <div class="fl-card">
         <h1 class="m-0 mb-2.5 text-xl md:text-2xl">{{ recipe.name }}</h1>
-        <div class="flex flex-wrap gap-2 mb-2.5">
-          <el-tag v-for="t in recipe.tags" :key="t" :type="tagColor(tagsStore.categories, t)" effect="light">
-            {{ t }}
+        <div v-if="recipe.tags.length" class="flex flex-wrap gap-2 mb-2.5">
+          <el-tag v-for="id in recipe.tags" :key="id" :type="tagsStore.tagColor(id)" effect="light">
+            {{ tagsStore.tagName(id) }}
+          </el-tag>
+        </div>
+        <div v-if="recipe.ingredient_tags?.length" class="flex flex-wrap items-center gap-2 mb-2.5">
+          <span class="text-xs text-[#909399]">自动识别</span>
+          <el-tag
+            v-for="id in recipe.ingredient_tags"
+            :key="id"
+            size="small"
+            effect="plain"
+            :type="tagsStore.tagColor(id)"
+          >
+            {{ tagsStore.tagName(id) }}
           </el-tag>
         </div>
         <div class="flex items-center gap-3 text-[#909399] text-[13px] mb-3.5">
@@ -109,7 +121,6 @@ import {
 import type { Recipe } from '@/api/types'
 import { useTagsStore } from '@/stores/tags'
 import { difficultyTagType, difficultyText, timeAgo } from '@/utils/format'
-import { tagColor } from '@/utils/tags'
 import RecipeSteps from '@/components/recipe/RecipeSteps.vue'
 
 const route = useRoute()
@@ -126,6 +137,7 @@ async function load() {
   recipe.value.steps = recipe.value.steps || []
   recipe.value.ingredients = recipe.value.ingredients || []
   recipe.value.tags = recipe.value.tags || []
+  recipe.value.ingredient_tags = recipe.value.ingredient_tags || []
   ratingDraft.value = recipe.value.rating
 }
 

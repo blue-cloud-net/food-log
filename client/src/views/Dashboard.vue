@@ -64,7 +64,18 @@
         <el-image v-if="cover" :src="cover" fit="cover" class="w-full h-[180px] rounded-lg mb-3" />
         <div class="text-xl font-bold mb-2">{{ randomRec.name }}</div>
         <div class="flex flex-wrap gap-1.5 justify-center mb-4">
-          <el-tag v-for="t in randomRec.tags" :key="t" size="small" effect="light">{{ t }}</el-tag>
+          <el-tag v-for="id in randomRec.tags" :key="id" size="small" effect="light">
+            {{ tagsStore.tagName(id) }}
+          </el-tag>
+          <el-tag
+            v-for="id in randomRec.ingredient_tags"
+            :key="id"
+            size="small"
+            effect="plain"
+            :type="tagsStore.tagColor(id)"
+          >
+            {{ tagsStore.tagName(id) }}
+          </el-tag>
         </div>
         <div class="flex justify-center gap-2">
           <el-button @click="pick">再看一道</el-button>

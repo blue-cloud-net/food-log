@@ -90,8 +90,24 @@
         <el-rate v-model="form.rating" :max="5" />
       </el-form-item>
 
-      <el-form-item label="标签（自动 + 手动，可自由删改）">
-        <TagSelector v-model="form.tags" :categories="tagsStore.categories" />
+      <el-form-item label="标签">
+        <TagSelector v-model="form.tags" />
+        <div v-if="recipe?.ingredient_tags?.length" class="mt-3 w-full">
+          <div class="text-xs text-[#909399] mb-1.5">
+            自动识别标签（由菜名/食材/耗时推导，保存时自动更新，不可手动编辑）
+          </div>
+          <div class="flex flex-wrap gap-1.5">
+            <el-tag
+              v-for="id in recipe.ingredient_tags"
+              :key="id"
+              size="small"
+              effect="plain"
+              :type="tagsStore.tagColor(id)"
+            >
+              {{ tagsStore.tagName(id) }}
+            </el-tag>
+          </div>
+        </div>
       </el-form-item>
 
       <el-form-item>
