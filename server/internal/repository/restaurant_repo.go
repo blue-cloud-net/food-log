@@ -43,8 +43,9 @@ func scanRestaurant(row pgx.Row) (*model.Restaurant, error) {
 // Create 创建餐厅
 func (r *RestaurantRepo) Create(ctx context.Context, rst *model.Restaurant) error {
 	images, _ := json.Marshal(rst.Images)
+	// restaurantCols 使用 r. 前缀，故 INSERT 目标表需同名别名
 	row := r.pool.QueryRow(ctx,
-		`INSERT INTO restaurants (user_id, name, address, cuisine_type, description, avg_rating, images, lat, lng)
+		`INSERT INTO restaurants AS r (user_id, name, address, cuisine_type, description, avg_rating, images, lat, lng)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		 RETURNING `+restaurantCols,
 		rst.UserID, rst.Name, rst.Address, rst.CuisineType, rst.Description,
