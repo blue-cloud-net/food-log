@@ -273,7 +273,7 @@ erDiagram
 - 字典表带 `updated_at` 触发器；关联表无 `updated_at`
 - 外键全部 `ON DELETE CASCADE`：删餐厅/菜品/标签/分类都会自动清理关联，无需事务内手写清理
 
-### 2.7 库存食材表（`011_inventory.sql`）
+### 2.7 库存食材表（`006_inventory.sql`）
 
 | 表 | 说明 |
 |---|---|
@@ -381,12 +381,12 @@ CREATE INDEX idx_inventory_items_user_expire ON inventory_items(user_id, expire_
 | `server/migrations/002_catalog.sql` | 初始数据：菜谱全局预设分类、标签词表与自动标签规则（固定 UUID） | 开发 + 生产 |
 | `server/migrations/004_shop_tags.sql` | 探店标签体系（餐厅 / 菜品各一套）+ 餐厅评分维度调整 | 开发 + 生产 |
 | `server/migrations/005_shop_tag_catalog.sql` | 初始数据：探店全局预设分类与标签 | 开发 + 生产 |
-| `server/migrations/009_demo_seed.sql` | 演示数据：`admin/admin` 账号、示例菜谱/餐厅/菜品、演示标签关联 | **仅开发** |
+| `server/migrations/006_inventory.sql` | 库存食材：`storage_locations` + `inventory_items` 及索引 / 触发器 | 开发 + 生产 |
+| `server/migrations/007_storage_location_catalog.sql` | 初始数据：8 个全局预设存放位置（固定 UUID） | 开发 + 生产 |
+| `server/migrations/009_demo_seed.sql` | 演示数据：`admin/admin` 账号、示例菜谱/餐厅/菜品、演示标签关联与库存食材 | **仅开发** |
 | `server/migrations/010_recipe_state_flags.sql` | 菜谱「做过 / 喜欢」标记（`recipes.made_at` / `is_liked`） | 开发 + 生产 |
-| `server/migrations/011_inventory.sql` | 库存食材：`storage_locations` + `inventory_items` 及索引 / 触发器 | 开发 + 生产 |
-| `server/migrations/012_storage_location_catalog.sql` | 初始数据：8 个全局预设存放位置（固定 UUID） | 开发 + 生产 |
 
-> `003` / `006`~`008` 号段空缺：早期文件重编号后留空，保证演示数据（`009_demo_seed.sql`）按文件名排序落在所有结构迁移之后。
+> `003` / `008` 号段空缺：留空以保证演示数据（`009_demo_seed.sql`）按文件名排序落在所有结构迁移（含 `006` / `007`）之后。
 
 > **执行方式**：服务启动时自动执行，`schema_migrations` 表记录已执行文件名并跳过重复项；
 > 每个文件在独立事务内执行，失败则回滚并终止启动。
@@ -413,7 +413,7 @@ CREATE INDEX idx_inventory_items_user_expire ON inventory_items(user_id, expire_
 | 整合 | 2026-10-07 | 原 5 个迁移文件整合为结构 / 初始数据 / 演示数据三个文件，改由服务启动时执行 |
 | 005 | 2026-10-07 | 存量标签迁移，删除 `recipes.tags` 列 |
 | 004 / 005（重编号） | 2026-10-07 | 探店标签体系（餐厅 / 菜品各一套）+ 预设词表；餐厅评分维度改为 4 项 |
-| 009 | 2026-10-07 | 演示数据文件由 `003_demo_seed.sql` 改为 `009_demo_seed.sql`（`006`~`008` 留空） |
+| 009 | 2026-10-07 | 演示数据文件由 `003_demo_seed.sql` 改为 `009_demo_seed.sql`（排在全部结构迁移之后） |
+| 006 | 2026-10-07 | 库存食材：存放位置字典 `storage_locations` + 条目表 `inventory_items`（编号需早于 009 以便演示数据引用） |
+| 007 | 2026-10-07 | 初始数据：8 个全局预设存放位置（固定 UUID `80000000-...`） |
 | 010 | 2026-10-07 | 菜谱「做过 / 喜欢」标记（`recipes.made_at` / `is_liked`） |
-| 011 | 2026-10-07 | 库存食材：存放位置字典 `storage_locations` + 条目表 `inventory_items` |
-| 012 | 2026-10-07 | 初始数据：8 个全局预设存放位置（固定 UUID `80000000-...`） |

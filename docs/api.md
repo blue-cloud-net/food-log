@@ -605,6 +605,7 @@ Authorization: Bearer <token>
 | GET | `/api/inventory/:id` | 条目详情 |
 | PUT | `/api/inventory/:id` | 更新条目 |
 | DELETE | `/api/inventory/:id` | 删除条目（食材用完） |
+| POST | `/api/inventory/batch-delete` | 批量删除（请求体 `{ "ids": ["<uuid>", ...] }`，返回 `{ "deleted": N }`） |
 
 请求体：
 
@@ -622,6 +623,8 @@ Authorization: Bearer <token>
 ```
 
 `location_id` 必须是当前用户可见的位置，否则返回 400（参数错误）；条目归属校验失败返回 404 / 403。
+
+**批量删除**：`ids` 必填且去重后不超过 200 条；空数组或非法 UUID 返回 400。仅删除**当前用户**的条目，实际删除数量通过 `deleted` 返回（已不存在或他人的 id 不计数、不报错）。
 
 ### 6.5 图片上传
 
