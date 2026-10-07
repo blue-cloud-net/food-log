@@ -7,6 +7,7 @@
 - 📝 **自制菜谱** — 记录菜名、食材清单、烹饪步骤、难度、耗时、评分、标签、多张照片
 - 🍽️ **餐厅探店** — 记录店名、地址、菜系、环境照片、综合评分
 - 🥘 **菜品点评** — 每道菜记录价格、口味描述、评分、就餐日期、照片
+- 🧊 **库存食材** — 记录手上还有的食材，按「冰箱」与「外面」分类（可自定义具体位置），记录数量、保质期与图片
 - 🖼️ **图片智能处理** — 大图自动压缩，生成缩略图，加载更快
 - 🔐 **用户系统** — 注册登录、JWT 认证、个人中心
 - 📱 **PWA** — 手机浏览器可安装到桌面，离线可访问
@@ -29,7 +30,7 @@ food-log/
 ├── docker-compose.yml       # 生产编排（db + app）
 ├── docker-compose.dev.yml   # 开发编排（db + server[air] + client[Vite]）
 ├── data/                    # 运行时数据（credentials / tmp / images）
-├── docs/                    # 开发文档（架构 / API / 数据库 / 标签）
+├── docs/                    # 开发文档（架构 / API / 数据库 / 标签 / 库存）
 ├── scripts/                 # 工具脚本（start-dev / stop-dev / build）
 ├── server/                  # Go 后端（含内嵌迁移与前端产物）
 └── client/                  # Vue 前端
@@ -83,6 +84,7 @@ APP_IMAGE=ghcr.io/blue-cloud-net/food-log:latest docker compose up -d
 | [API 接口](docs/api.md) | 完整 API 文档 |
 | [数据库设计](docs/database.md) | 表结构、索引、迁移与初始化流程 |
 | [标签体系](docs/tags.md) | 标签分类、预设词表、自动标签规则 |
+| [库存食材](docs/inventory.md) | 存放位置字典、库存条目、保质期状态 |
 
 ## 🧩 常用脚本
 
@@ -103,6 +105,7 @@ APP_IMAGE=ghcr.io/blue-cloud-net/food-log:latest docker compose up -d
 | `data/tmp/` | 上传中转与原子写入的中间文件，服务启动时清空 |
 | `data/images/recipe/` | 菜谱图片（`YYYY/MM/<uuid>.jpg` + `_thumb.jpg`） |
 | `data/images/restaurant/` | 餐厅与菜品图片 |
+| `data/images/inventory/` | 库存食材图片 |
 
 > 图片对外路径为 `/images/{type}/YYYY/MM/<uuid>.jpg`，由 Go 进程直接提供静态服务。
 > 备份时需同时覆盖 `data/` 目录与 PostgreSQL 命名卷 `foodlog-pgdata`。

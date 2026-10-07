@@ -2,7 +2,7 @@
 
 > 更新日期：2026-10-07
 > Base URL：`http://localhost:8080/api`
-> 相关文档：[标签体系](./tags.md)、[数据库设计](./database.md)、[架构设计](./architecture.md)
+> 相关文档：[标签体系](./tags.md)、[库存食材](./inventory.md)、[数据库设计](./database.md)、[架构设计](./architecture.md)
 
 ## 1. 通用约定
 
@@ -535,9 +535,101 @@ Authorization: Bearer <token>
 
 响应 `data`：`{ "is_liked": true }`
 
-## 6. 图片上传 `/upload`
+## 6. 库存食材模块 `/inventory`、`/storage-locations`
 
-### 6.1 上传图片
+记录当前拥有的食材，按「存放位置」分组。位置分 `fridge`（冰箱，含冷藏室/冷冻室/变温室/保鲜抽屉/门架）与 `outside`（外面，含室温台面/储物柜/荫凉通风处）两大类。**列表不分页**，分组由前端按位置词表完成。详见 [库存食材](./inventory.md)。
+
+### 6.1 存放位置词表
+
+`GET /api/storage-locations` 🔒
+
+返回**当前用户可见**的存放位置平铺列表 `StorageLocation[]`（全局预设 + 本人自定义），已按 `area, sort_order` 排序：
+
+```json
+[
+  { "id": "80000000-0000-4000-8000-000000000001", "area": "fridge", "name": "冷藏室", "sort_order": 10, "is_system": true },
+  { "id": "<uuid>", "area": "fridge", "name": "冰箱上层", "sort_order": 900, "is_system": false }
+]
+```
+
+`owner_id` 为空且 `is_system = true` 的为全局预设位置（只读）。
+
+### 6.2 存放位置维护
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/storage-locations` | 新建自定义位置，请求体 `{ "area": "fridge", "name": "冰箱上层" }` |
+| PUT | `/api/storage-locations/:id` | 改名 / 调整大类（仅本人自定义，预设返回 403） |
+| DELETE | `/api/storage-locations/:id` | 删除位置（仅本人自定义；位置下仍有库存食材时返回 **409**） |
+
+`area` 只接受 `fridge` / `outside`；与全局预设或本人已有位置重名返回 409。
+
+### 6.3 库存列表
+
+`GET /api/inventory?keyword=&area=&location_id=&expiring_within_days=&sort=` 🔒
+
+| 参数 | 说明 |
+|---|---|
+| keyword | 模糊匹配食材名称 / 备注 |
+| area | 存放位置大类：`fridge` \| `outside` |
+| location_id | 指定存放位置 id |
+| expiring_within_days | >0 时仅返回 N 天内到期（含已过期）的条目 |
+| sort | `expire`（默认，按过期日升序，未设置排最后）\| `created` \| `name` |
+
+响应 `data`：`{ "list": [InventoryItem], "total": 3 }`。条目字段：
+
+```json
+{
+  "id": "<uuid>",
+  "user_id": "<uuid>",
+  "location_id": "<uuid>",
+  "name": "鸡蛋",
+  "amount": "6",
+  "unit": "个",
+  "category": "蛋奶",
+  "expire_at": "2026-10-20",
+  "note": "开封后冷藏",
+  "images": ["/images/inventory/2026/10/uuid.jpg"],
+  "created_at": "...",
+  "updated_at": "..."
+}
+```
+
+`amount` / `unit` / `category` 均为自由文本（`category` 前端给预设建议）；`expire_at` 为 `YYYY-MM-DD`，未设置为 `null`。
+
+### 6.4 新增 / 更新 / 删除条目
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/inventory` | 新增条目 |
+| GET | `/api/inventory/:id` | 条目详情 |
+| PUT | `/api/inventory/:id` | 更新条目 |
+| DELETE | `/api/inventory/:id` | 删除条目（食材用完） |
+
+请求体：
+
+```json
+{
+  "location_id": "<uuid>",
+  "name": "鸡蛋",
+  "amount": "6",
+  "unit": "个",
+  "category": "蛋奶",
+  "expire_at": "2026-10-20",
+  "note": "开封后冷藏",
+  "images": []
+}
+```
+
+`location_id` 必须是当前用户可见的位置，否则返回 400（参数错误）；条目归属校验失败返回 404 / 403。
+
+### 6.5 图片上传
+
+库存食材图片复用 `POST /api/upload`，`type` 传 `inventory`。
+
+## 7. 图片上传 `/upload`
+
+### 7.1 上传图片
 
 `POST /api/upload` 🔒
 Content-Type: `multipart/form-data`
@@ -545,7 +637,7 @@ Content-Type: `multipart/form-data`
 | 字段 | 说明 |
 |---|---|
 | images | 文件数组，支持 jpg/png/webp/gif，单文件 ≤20MB，一次最多 9 张 |
-| type | 图片用途：`recipe`（菜谱，默认）\| `restaurant`（餐厅与菜品）；其它取值返回 400 |
+| type | 图片用途：`recipe`（菜谱，默认）\| `restaurant`（餐厅与菜品）\| `inventory`（库存食材）；其它取值返回 400 |
 
 图片按用途与日期落盘：`{DATA_DIR}/images/{type}/YYYY/MM/<uuid>.jpg`，同时生成 `_thumb.jpg` 缩略图。
 
@@ -561,14 +653,14 @@ Content-Type: `multipart/form-data`
 }
 ```
 
-### 6.2 图片访问
+### 7.2 图片访问
 
 上传后的图片通过静态服务直接访问：`GET /images/recipe/2026/08/uuid.jpg`（无需认证，浏览器可直接展示）。
 路径不存在时返回 404，不回退到前端页面。
 
-## 7. 全局搜索 `/search`
+## 8. 全局搜索 `/search`
 
-### 7.1 搜索
+### 8.1 搜索
 
 `GET /api/search?keyword=牛肉` 🔒
 
@@ -587,9 +679,9 @@ Content-Type: `multipart/form-data`
 }
 ```
 
-## 8. 数据导出 / 导入 `/export`
+## 9. 数据导出 / 导入 `/export`
 
-### 8.1 导出 JSON（完整备份）
+### 9.1 导出 JSON（完整备份）
 
 `GET /api/export?format=json` 🔒
 
@@ -597,13 +689,13 @@ Content-Type: `multipart/form-data`
 
 > **备份中的标签为标签名称（而非 id）**，因此备份可跨数据库导入；导入时按名称重新映射，未收录的名称会创建为用户自定义标签。
 
-### 8.2 导出 CSV（菜谱单表）
+### 9.2 导出 CSV（菜谱单表）
 
 `GET /api/export?format=csv` 🔒
 
 返回 `recipes.csv`，列为：菜名、描述、食材、步骤、耗时(分钟)、难度、评分、**菜谱标签**、**食材标签**、创建时间（标签列输出标签名称，以 `/` 分隔）。
 
-### 8.3 导入恢复
+### 9.3 导入恢复
 
 `POST /api/export/import?mode=append` 🔒
 
@@ -616,7 +708,7 @@ Content-Type: `multipart/form-data`
 
 响应 `data`：`{ "imported": true, "mode": "append" }`
 
-## 9. 数据模型速查
+## 10. 数据模型速查
 
 ```typescript
 interface Ingredient { name: string; amount: string; unit: string }
@@ -686,5 +778,31 @@ interface Dish {
   /** 列表接口返回的所属餐厅名 */
   restaurant_name?: string;
   created_at: string;
+}
+
+interface StorageLocation {
+  id: string;
+  /** 为空表示全局预设位置（is_system = true，只读） */
+  owner_id?: string;
+  /** fridge 冰箱内 | outside 外面 */
+  area: 'fridge' | 'outside';
+  name: string;
+  sort_order: number;
+  is_system: boolean;
+}
+
+interface InventoryItem {
+  id: string; user_id: string;
+  /** 存放位置 id（前端用位置词表解析名称与分组） */
+  location_id: string;
+  name: string;
+  amount: string; unit: string;
+  /** 食材分类（自由文本） */
+  category: string;
+  /** 过期日期 YYYY-MM-DD（null = 未设置） */
+  expire_at: string | null;
+  note: string;
+  images: string[];
+  created_at: string; updated_at: string;
 }
 ```

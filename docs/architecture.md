@@ -111,13 +111,17 @@ client/src/
 | `/restaurants/new` | 新建餐厅 | ✓ |
 | `/restaurants/:id` | 餐厅详情 | ✓ |
 | `/restaurants/:id/edit` | 编辑餐厅 | ✓ |
+| `/inventory` | 库存食材（按「冰箱 / 外面」两级分组） | ✓ |
+| `/inventory/new` | 新增食材 | ✓ |
+| `/inventory/:id/edit` | 编辑食材 | ✓ |
+| `/inventory/locations` | 存放位置管理（预设只读 + 自定义） | ✓ |
 | `/tags` | 标签管理（菜谱 / 餐厅 / 菜品分区） | ✓ |
 | `/search` | 全局搜索结果 | ✓ |
 | `/profile` | 个人中心 | ✓ |
 
 ### 5.2 响应式布局
 
-- **移动端（<768px）**：底部 TabBar（首页/菜谱/餐厅/我的）
+- **移动端（<768px）**：底部 TabBar（首页/菜谱/餐厅/库存/我的）
 - **桌面端（≥768px）**：侧边栏导航
 - 同一套组件，通过 CSS Media Query 自适应
 
@@ -126,6 +130,7 @@ client/src/
 - `useAuthStore`：token、用户信息、登录/登出
 - `useTagsStore`：菜谱标签词表（`id → 名称/颜色/互斥组` 索引，`ensureLoaded` 幂等预热）
 - `useShopTagsStore`：探店标签词表，餐厅与菜品两份独立字典，getter 均需传入 `domain`
+- `useStorageLocationsStore`：存放位置词表（全局预设 + 本人自定义），提供「按 `fridge`/`outside` 分组」与「id → 名称」解析，供库存列表分组与表单下拉使用
 
 > 标签只以 **id 数组**存在于各实体上，显示名与颜色由上述 store 统一解析，避免后端返回冗余文本。
 > `components/common/TagSelector.vue` 通过 `domain` prop（`recipe` / `restaurant` / `dish`）选择对应 store 与创建接口，三套字典共用一个组件。

@@ -11,6 +11,8 @@ erDiagram
     users ||--o{ restaurants : "拥有"
     users ||--o{ dishes : "评价"
     restaurants ||--o{ dishes : "包含"
+    users ||--o{ inventory_items : "拥有"
+    storage_locations ||--o{ inventory_items : "存放"
 
     tag_categories ||--o{ tags : "归类"
     tags ||--o{ recipe_tags : "被标记"
@@ -81,6 +83,28 @@ erDiagram
         date eaten_at
         boolean is_liked
         timestamptz created_at
+    }
+    storage_locations {
+        uuid id PK
+        uuid owner_id FK
+        varchar area
+        varchar name
+        int sort_order
+        boolean is_system
+    }
+    inventory_items {
+        uuid id PK
+        uuid user_id FK
+        uuid location_id FK
+        varchar name
+        varchar amount
+        varchar unit
+        varchar category
+        date expire_at
+        varchar note
+        jsonb images
+        timestamptz created_at
+        timestamptz updated_at
     }
     tag_categories {
         uuid id PK
@@ -249,6 +273,47 @@ erDiagram
 - 字典表带 `updated_at` 触发器；关联表无 `updated_at`
 - 外键全部 `ON DELETE CASCADE`：删餐厅/菜品/标签/分类都会自动清理关联，无需事务内手写清理
 
+### 2.7 库存食材表（`011_inventory.sql`）
+
+| 表 | 说明 |
+|---|---|
+| `storage_locations` | 存放位置字典，`area ∈ {fridge, outside}`；`owner_id IS NULL` = 全局预设（`is_system` 只读），否则为用户自定义 |
+| `inventory_items` | 库存食材条目，`user_id` 归属用户，`location_id` 指向存放位置 |
+
+`storage_locations`：
+
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| id | UUID | PK | 主键 |
+| owner_id | UUID | FK → users(id), ON DELETE CASCADE | `NULL` = 全局预设 |
+| area | VARCHAR(20) | CHECK in (fridge,outside) | 大类：冰箱内 / 外面 |
+| name | VARCHAR(50) | NOT NULL | 位置名 |
+| sort_order | INT | DEFAULT 0 | 排序 |
+| is_system | BOOLEAN | DEFAULT false | 全局预设 = true（只读） |
+| created_at / updated_at | TIMESTAMPTZ | DEFAULT now() | 带 `updated_at` 触发器 |
+
+- `UNIQUE NULLS NOT DISTINCT (owner_id, area, name)`：同一 owner 同一大类下名称唯一
+- 索引 `idx_storage_locations_owner (owner_id)`
+
+`inventory_items`：
+
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| id | UUID | PK | 主键 |
+| user_id | UUID | FK → users(id), NOT NULL | 所属用户 |
+| location_id | UUID | FK → storage_locations(id), **ON DELETE RESTRICT**, NOT NULL | 存放位置 |
+| name | VARCHAR(100) | NOT NULL | 食材名称 |
+| amount | VARCHAR(30) | DEFAULT '' | 数量（自由文本） |
+| unit | VARCHAR(20) | DEFAULT '' | 单位 |
+| category | VARCHAR(20) | DEFAULT '' | 食材分类（自由文本） |
+| expire_at | DATE | | 保质期 / 过期日期，可空 |
+| note | VARCHAR(500) | DEFAULT '' | 备注 |
+| images | JSONB | DEFAULT '[]' | 图片 `["/images/inventory/..."]` |
+| created_at / updated_at | TIMESTAMPTZ | DEFAULT now() | 带 `updated_at` 触发器 |
+
+> `location_id` 采用 `ON DELETE RESTRICT`：位置被库存引用时不可删除（服务层转 409），避免连带清空库存。
+> 预设位置固定 UUID 见 [库存食材](./inventory.md)，`80000000-` 号段。
+
 ## 3. 索引策略
 
 ```sql
@@ -285,6 +350,11 @@ CREATE INDEX idx_dish_tag_links_tag ON dish_tag_links(tag_id);
 
 -- dishes（按餐厅查询 + 按就餐日期排序）
 CREATE INDEX idx_dishes_restaurant ON dishes(restaurant_id, eaten_at DESC);
+
+-- 库存食材（存放位置字典按 owner 查；条目按用户 + 位置 / 过期日查）
+CREATE INDEX idx_storage_locations_owner ON storage_locations(owner_id);
+CREATE INDEX idx_inventory_items_user_location ON inventory_items(user_id, location_id);
+CREATE INDEX idx_inventory_items_user_expire ON inventory_items(user_id, expire_at);
 ```
 
 > `idx_restaurants_cuisine` 已随 `cuisine_type` 列一并删除（见 `004_shop_tags.sql`）。
@@ -299,6 +369,7 @@ CREATE INDEX idx_dishes_restaurant ON dishes(restaurant_id, eaten_at DESC);
 - **软删除策略**：当前采用硬删除（DELETE），后续如需可回收再引入 deleted_at
 - **菜品与餐厅强关联**：菜品通过 restaurant_id 归属餐厅，级联删除保证数据一致
 - **updated_at 自动更新**：通过触发器或应用层维护
+- **存放位置字典化**：`storage_locations` 与标签同为「全局预设（`owner_id IS NULL`，`is_system` 只读）+ 用户自定义」模型，`area` 分 `fridge` / `outside` 两大类；`inventory_items.location_id` 用 `ON DELETE RESTRICT`，被引用时禁止删除位置（服务层转 409），避免连带清空库存
 
 ## 5. 迁移文件
 
@@ -307,12 +378,19 @@ CREATE INDEX idx_dishes_restaurant ON dishes(restaurant_id, eaten_at DESC);
 | 文件 | 内容 | 执行范围 |
 |---|---|---|
 | `server/migrations/001_schema.sql` | 全部表 / 索引 / 触发器（用户、菜谱、餐厅、菜品、收藏、标签分类/标签/关联/规则） | 开发 + 生产 |
-| `server/migrations/002_catalog.sql` | 初始数据：全局预设分类、标签词表与自动标签规则（固定 UUID） | 开发 + 生产 |
-| `server/migrations/003_demo_seed.sql` | 演示数据：`admin/admin` 账号、示例菜谱/餐厅/菜品、演示菜谱标签 | **仅开发** |
+| `server/migrations/002_catalog.sql` | 初始数据：菜谱全局预设分类、标签词表与自动标签规则（固定 UUID） | 开发 + 生产 |
+| `server/migrations/004_shop_tags.sql` | 探店标签体系（餐厅 / 菜品各一套）+ 餐厅评分维度调整 | 开发 + 生产 |
+| `server/migrations/005_shop_tag_catalog.sql` | 初始数据：探店全局预设分类与标签 | 开发 + 生产 |
+| `server/migrations/009_demo_seed.sql` | 演示数据：`admin/admin` 账号、示例菜谱/餐厅/菜品、演示标签关联 | **仅开发** |
+| `server/migrations/010_recipe_state_flags.sql` | 菜谱「做过 / 喜欢」标记（`recipes.made_at` / `is_liked`） | 开发 + 生产 |
+| `server/migrations/011_inventory.sql` | 库存食材：`storage_locations` + `inventory_items` 及索引 / 触发器 | 开发 + 生产 |
+| `server/migrations/012_storage_location_catalog.sql` | 初始数据：8 个全局预设存放位置（固定 UUID） | 开发 + 生产 |
+
+> `003` / `006`~`008` 号段空缺：早期文件重编号后留空，保证演示数据（`009_demo_seed.sql`）按文件名排序落在所有结构迁移之后。
 
 > **执行方式**：服务启动时自动执行，`schema_migrations` 表记录已执行文件名并跳过重复项；
 > 每个文件在独立事务内执行，失败则回滚并终止启动。
-> `APP_ENV=development` 时额外执行 `003_demo_seed.sql`；生产模式（`APP_ENV` 默认值）跳过演示数据。
+> `APP_ENV=development` 时额外执行 `009_demo_seed.sql`；生产模式（`APP_ENV` 默认值）跳过演示数据。
 > 迁移期间使用 `pg_advisory_lock` 串行化，避免多实例并发初始化。
 >
 > **空库初始化**：检测到不存在 `users` 表时执行全量初始化；已初始化的库只补执行新增迁移文件。
@@ -334,3 +412,8 @@ CREATE INDEX idx_dishes_restaurant ON dishes(restaurant_id, eaten_at DESC);
 | 004 | 2026-10-07 | 标签字典化：分类/标签/关联/规则表 + 预设词表种子 |
 | 整合 | 2026-10-07 | 原 5 个迁移文件整合为结构 / 初始数据 / 演示数据三个文件，改由服务启动时执行 |
 | 005 | 2026-10-07 | 存量标签迁移，删除 `recipes.tags` 列 |
+| 004 / 005（重编号） | 2026-10-07 | 探店标签体系（餐厅 / 菜品各一套）+ 预设词表；餐厅评分维度改为 4 项 |
+| 009 | 2026-10-07 | 演示数据文件由 `003_demo_seed.sql` 改为 `009_demo_seed.sql`（`006`~`008` 留空） |
+| 010 | 2026-10-07 | 菜谱「做过 / 喜欢」标记（`recipes.made_at` / `is_liked`） |
+| 011 | 2026-10-07 | 库存食材：存放位置字典 `storage_locations` + 条目表 `inventory_items` |
+| 012 | 2026-10-07 | 初始数据：8 个全局预设存放位置（固定 UUID `80000000-...`） |
