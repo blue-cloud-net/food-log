@@ -1,0 +1,27 @@
+# 版本控制与文档
+.git
+.github
+docs
+README.md
+
+# 运行时数据与日志
+data
+logs
+*.log
+
+# 前端
+**/node_modules
+client/dist
+client/.vite
+
+# 后端
+server/bin
+server/tmp
+server/.air
+server/internal/web/dist
+
+# 其他
+.DS_Store
+.env
+.env.*
+!.env.example

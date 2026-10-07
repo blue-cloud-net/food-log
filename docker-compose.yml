@@ -1,3 +1,15 @@
+# =============================================
+# 生产编排：PostgreSQL + 单镜像应用
+#
+# 应用镜像内含前端静态资源（go:embed）与后端 API，单进程监听 8080。
+# 启动时会自动完成：空库初始化 → 增量迁移 → 生产模式引导 admin 账号。
+#
+# 用法：
+#   cp .env.example .env   # 至少修改 JWT_SECRET
+#   docker compose up -d --build
+#
+# 自动生成的 admin 密码见 ./data/credentials/admin-password.txt
+# =============================================
 services:
   db:
     image: postgres:16-alpine
@@ -8,7 +20,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-foodlog123}
       POSTGRES_DB: ${POSTGRES_DB:-foodlog}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -17,60 +29,38 @@ services:
       timeout: 5s
       retries: 10
 
-  # 一次性迁移服务：db 就绪后按序执行 server/migrations/*.sql
-  # 用 schema_migrations 表记录已执行文件，重复 compose up 时自动跳过
-  migrate:
-    image: postgres:16-alpine
-    container_name: foodlog-migrate
-    restart: "no"
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # 可指向已发布的 GHCR 镜像：APP_IMAGE=ghcr.io/blue-cloud-net/food-log:v1.0.0
+    image: ${APP_IMAGE:-food-log:local}
+    container_name: foodlog-app
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-foodlog}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-foodlog123}
-      POSTGRES_DB: ${POSTGRES_DB:-foodlog}
-    volumes:
-      - ./server/migrations:/migrations:ro
-      - ./scripts/migrate-docker.sh:/usr/local/bin/migrate-docker.sh:ro
-    command: ["/bin/sh", "/usr/local/bin/migrate-docker.sh"]
-
-  server:
-    build:
-      context: ./server
-      dockerfile: Dockerfile
-    container_name: foodlog-server
-    restart: unless-stopped
-    environment:
-      SERVER_PORT: ${SERVER_PORT:-8080}
+      APP_ENV: production
+      SERVER_PORT: 8080
+      DATA_DIR: /app/data
       DATABASE_URL: postgres://${POSTGRES_USER:-foodlog}:${POSTGRES_PASSWORD:-foodlog123}@db:5432/${POSTGRES_DB:-foodlog}?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-foodlog-secret-change-me}
-      UPLOAD_DIR: /app/uploads
       CLIENT_ORIGIN: ${CLIENT_ORIGIN:-http://localhost}
+      # 管理员引导：留空 ADMIN_PASSWORD 时自动生成随机密码并写入 data/credentials/
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # AI（留空则禁用）
       AI_PROVIDER: ${AI_PROVIDER:-}
       AI_BASE_URL: ${AI_BASE_URL:-}
       AI_API_KEY: ${AI_API_KEY:-}
       AI_MODEL: ${AI_MODEL:-}
       AI_TIMEOUT: ${AI_TIMEOUT:-3}
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
     volumes:
-      - uploads:/app/uploads
+      - ./data:/app/data
     ports:
-      - "${SERVER_PORT:-8080}:8080"
-
-  client:
-    build:
-      context: ./client
-      dockerfile: Dockerfile
-    container_name: foodlog-client
-    restart: unless-stopped
-    depends_on:
-      - server
-    ports:
-      - "${CLIENT_PORT:-80}:80"
+      - "${APP_PORT:-8080}:8080"
 
 volumes:
   pgdata:
-  uploads:
+    name: foodlog-pgdata
