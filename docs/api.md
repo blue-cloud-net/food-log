@@ -1,7 +1,8 @@
 # API 接口文档
 
-> 更新日期：2026-08-11
+> 更新日期：2026-10-07
 > Base URL：`http://localhost:8080/api`
+> 相关文档：[标签体系](./tags.md)、[数据库设计](./database.md)、[架构设计](./architecture.md)
 
 ## 1. 通用约定
 
@@ -123,7 +124,7 @@ Authorization: Bearer <token>
 
 ### 3.1 列表
 
-`GET /api/recipes?page=1&page_size=10&keyword=&difficulty=&tag=&sort=created_at&favorite=false`
+`GET /api/recipes?page=1&page_size=10&keyword=&difficulty=&tag=&ingredient_tag=&sort=created_at&favorite=false`
 
 | 参数 | 类型 | 说明 |
 |---|---|---|
@@ -131,7 +132,8 @@ Authorization: Bearer <token>
 | page_size | int | 每页数量，默认 10，最大 50 |
 | keyword | string | 菜名搜索 |
 | difficulty | string | 难度筛选 easy/medium/hard |
-| tag | string | 标签筛选（如 `素菜`） |
+| tag | string | **菜谱级**标签筛选（标签 id） |
+| ingredient_tag | string | **食材级**标签筛选（标签 id） |
 | sort | string | created_at/rating/cook_time |
 | favorite | bool | `true` 时只返回已收藏菜谱 |
 
@@ -148,7 +150,8 @@ Authorization: Bearer <token>
       "cook_time_minutes": 20,
       "difficulty": "medium",
       "rating": 5,
-      "tags": ["川菜", "下饭菜"],
+      "tags": ["<标签 id>"],
+      "ingredient_tags": ["<标签 id>"],
       "images": ["/uploads/2026/08/xxx.jpg", "/uploads/2026/08/xxx_thumb.jpg"],
       "is_favorited": true,
       "created_at": "2026-08-11T10:00:00Z",
@@ -160,6 +163,9 @@ Authorization: Bearer <token>
   "page_size": 10
 }
 ```
+
+> `tags` 为用户手选的**菜谱级**标签 id，`ingredient_tags` 为服务端按规则自动派生的**食材级**标签 id（只读）。
+> 接口只返回 id，显示名/颜色通过 `GET /api/recipes/tags` + 前端 store 解析。详见 [标签体系](./tags.md)。
 
 ### 3.2 创建菜谱
 
@@ -175,12 +181,13 @@ Authorization: Bearer <token>
   "cook_time_minutes": 20,
   "difficulty": "medium",
   "rating": 5,
-  "tags": ["川菜"],
+  "tags": ["<标签 id>"],
   "images": ["/uploads/2026/08/xxx.jpg"]
 }
 ```
 
-响应 `data`：完整菜谱对象。
+> 请求中的 `tags` 为标签 id 数组（仅**菜谱级**手选标签）。`ingredient_tags` 由服务端计算，请求中传入会被忽略。
+> 无效或不可见的标签 id 返回 400。响应 `data`：完整菜谱对象（含 `tags` 与 `ingredient_tags`）。
 
 ### 3.3 菜谱详情
 
@@ -202,29 +209,42 @@ Authorization: Bearer <token>
 
 ### 3.6 自动标签说明
 
-创建/更新菜谱时，后端会依据食材清单自动生成标签（荤菜/素菜、牛肉、鱼、海鲜、豆制品、蔬菜、蛋、快手、辣、汤等），与请求中手动 `tags` 合并去重后保存。词典未识别时若已配置 AI 则调用 AI 兜底（失败静默降级，仅保留词典结果）。
+创建/更新菜谱时，服务端按数据库中的 `tag_rules` 从菜名、描述、食材、耗时推导**食材级标签**（写入 `ingredient_tags`），与用户手选的**菜谱级标签**（`tags`）分开存储：
 
-### 3.7 预设标签词表
+- 自动结果会剔除与手选重复的标签
+- 若手选已占用某互斥组（如荤菜/素菜），自动结果中同组标签一并剔除，避免矛盾展示
+- 规则识别不足且已配置 AI 时用 AI 兜底（失败静默降级）
+- 规则与词表详见 [标签体系](./tags.md)
+
+### 3.7 标签词表
 
 `GET /api/recipes/tags` 🔒
 
-响应 `data`：按分类返回预设词表，供前端标签选择器/自动补全使用。
+响应 `data`：当前用户可见的分类（全局预设 + 本人自定义）及其下标签，供前端选择器与 id→显示名解析使用。
+
 ```json
 [
-  { "name": "荤素", "tags": ["荤菜", "素菜"] },
-  { "name": "食材", "tags": ["牛肉", "猪肉", "鸡肉", "羊肉", "鸭肉", "鱼", "海鲜", "虾", "蟹", "蛋", "豆制品", "蔬菜", "菌菇", "主食"] },
-  { "name": "场景", "tags": ["快手", "汤", "凉菜", "面食", "甜点"] },
-  { "name": "时段", "tags": ["早餐", "午餐", "晚餐", "夜宵"] },
-  { "name": "菜系", "tags": ["川菜", "粤菜", "湘菜", "鲁菜", "苏菜", "浙菜", "闽菜", "徽菜", "东北菜", "西北菜"] },
-  { "name": "口味", "tags": ["辣", "清淡", "甜", "酸", "咸鲜"] }
+  {
+    "id": "10000000-0000-4000-8000-000000000001",
+    "name": "荤素",
+    "color": "danger",
+    "sort_order": 10,
+    "is_system": true,
+    "tags": [
+      { "id": "20000000-0000-4000-8000-000000000001", "category_id": "10000000-0000-4000-8000-000000000001", "name": "荤菜", "mutex_group": "diet", "sort_order": 0, "is_system": true },
+      { "id": "20000000-0000-4000-8000-000000000002", "category_id": "10000000-0000-4000-8000-000000000001", "name": "素菜", "mutex_group": "diet", "sort_order": 1, "is_system": true }
+    ]
+  }
 ]
 ```
 
+> 用户自定义分类/标签额外带 `owner_id`；`is_system = true` 表示预设项（只读）。
+
 ### 3.8 随机选菜（今天吃什么）
 
-`GET /api/recipes/random?tag=&difficulty=` 🔒
+`GET /api/recipes/random?tag=&ingredient_tag=&difficulty=` 🔒
 
-从符合条件的菜谱中随机返回一条。无匹配时返回 404。响应 `data` 为完整菜谱对象。
+从符合条件的菜谱中随机返回一条（`tag` / `ingredient_tag` 均为标签 id）。无匹配时返回 404。响应 `data` 为完整菜谱对象。
 
 ### 3.9 收藏 / 取消收藏
 
@@ -254,11 +274,38 @@ Authorization: Bearer <token>
 {
   "name": "清蒸鲈鱼",
   "ingredients": ["鲈鱼", "姜", "葱"],
-  "tags": ["荤菜", "鱼"]
+  "tags": ["<标签 id>"]
 }
 ```
 
+> `tags` 为标签 id：AI 给出的名称先按当前用户可见词表匹配，未收录的名称会在该用户的「自定义」分类下创建为自定义标签。
+
 未配置 AI 或不支持视觉模型时返回 400 明确提示。
+
+## 3.11 标签管理 `/tags`、`/tag-categories` 🔒
+
+用于维护**用户自定义**分类与标签。全局预设项（`is_system = true`）只读，修改返回 403；他人的自定义项返回 403，不存在的返回 404。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/tags` | 新建自定义标签 |
+| PUT | `/api/tags/:id` | 重命名/改互斥组/改排序 |
+| DELETE | `/api/tags/:id` | 删除标签（级联解除菜谱关联） |
+| POST | `/api/tag-categories` | 新建自定义分类 |
+| PUT | `/api/tag-categories/:id` | 改名/改色/改排序 |
+| DELETE | `/api/tag-categories/:id` | 删除分类（级联删除其下标签） |
+
+新建标签请求（`category_id` 省略时自动归入该用户的「自定义」分类，不存在则自动创建）：
+```json
+{ "name": "外婆菜", "category_id": "<分类 id>", "mutex_group": "optional" }
+```
+
+新建分类请求：
+```json
+{ "name": "我的分类", "color": "warning" }
+```
+
+`color` 仅支持 `primary` / `success` / `warning` / `danger` / `info`。同名自定义标签/分类返回 409。
 
 ## 4. 餐厅模块 `/restaurants`
 
@@ -424,11 +471,13 @@ Content-Type: `multipart/form-data`
 
 直接返回备份文件（Content-Disposition 提示下载），内容为 `ExportData` 格式（见下），包含菜谱/餐厅/菜品/收藏。
 
+> **备份中的标签为标签名称（而非 id）**，因此备份可跨数据库导入；导入时按名称重新映射，未收录的名称会创建为用户自定义标签。
+
 ### 8.2 导出 CSV（菜谱单表）
 
 `GET /api/export?format=csv` 🔒
 
-返回 `recipes.csv`，列为：菜名、描述、食材、步骤、耗时(分钟)、难度、评分、标签、创建时间。
+返回 `recipes.csv`，列为：菜名、描述、食材、步骤、耗时(分钟)、难度、评分、**菜谱标签**、**食材标签**、创建时间（标签列输出标签名称，以 `/` 分隔）。
 
 ### 8.3 导入恢复
 
@@ -449,12 +498,29 @@ Content-Type: `multipart/form-data`
 interface Ingredient { name: string; amount: string; unit: string }
 interface Step { order: number; content: string; image?: string }
 
+interface Tag {
+  id: string; category_id: string; owner_id?: string;
+  name: string; mutex_group?: string;
+  sort_order: number; is_system: boolean;
+}
+
+interface TagCategory {
+  id: string; owner_id?: string; name: string;
+  color: 'primary' | 'success' | 'warning' | 'danger' | 'info';
+  sort_order: number; is_system: boolean; tags: Tag[];
+}
+
 interface Recipe {
   id: string; name: string; description?: string;
   ingredients: Ingredient[]; steps: Step[];
   cook_time_minutes?: number;
   difficulty: 'easy' | 'medium' | 'hard' | '';
-  rating?: number; tags: string[]; images: string[];
+  rating?: number;
+  /** 菜谱级标签 id（用户手选） */
+  tags: string[];
+  /** 食材级标签 id（服务端自动派生） */
+  ingredient_tags: string[];
+  images: string[];
   is_favorited: boolean;
   created_at: string; updated_at: string;
 }

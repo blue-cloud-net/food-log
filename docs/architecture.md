@@ -166,26 +166,29 @@ graph LR
 
 ```mermaid
 graph TD
-    A[创建/更新菜谱] --> B[提取食材名称]
-    B --> C[词典匹配]
-    C --> D{命中荤素/食材标签?}
+    A[创建/更新菜谱] --> B[校验并解析手选标签 id]
+    B --> C[从 DB 加载词表与 tag_rules]
+    C --> D{命中互斥组成员标签?}
     D -->|是| E[规则推导: 快手/汤/辣等]
     D -->|否| F[调用 AI Provider 兜底]
-    E --> G[与手动标签合并去重]
+    E --> G[剔除与手选重复/同互斥组的项]
     F --> G
-    G --> H[写入 recipes.tags]
+    G --> H[写入 recipe_ingredient_tags]
+    B --> I[写入 recipe_tags]
     F -.AI 未配置/超时/失败.-> G
 ```
 
-- **词典**（`internal/tagging/dictionary.go`）：食材关键词 → 标签，含荤素/食材/场景/时段/菜系/口味六类预设词表；荤素互斥（蛋归荤）
-- **核心**（`internal/tagging/tagging.go`）：`Generate` 匹配 → 规则推导 → 手动合并去重；AI 兜底失败静默降级
-- **词表接口** `GET /api/recipes/tags` 供前端选择器使用
+- **词表**：由数据库提供（`tag_categories` / `tags` / `tag_rules`），支持「全局预设 + 用户自定义」，见 [标签体系](./tags.md)
+- **核心**（`internal/tagging/tagging.go`）：`Generate(in, rules)` 纯函数，按 `sort_order` 求值规则并返回标签 id；`HasCoreTags` 判断是否需要 AI 兜底
+- **服务**（`internal/service/tag_service.go`）：词表读取（30s 进程内缓存 + 写入失效）、`ComputeIngredientTags`（去重与互斥组剔除）、`RecognizeTagNames`（名称→id，未收录则建自定义标签）、自定义分类/标签 CRUD
+- **存储**：菜谱级手选标签写入 `recipe_tags`，食材级自动标签写入 `recipe_ingredient_tags`，两者分开
+- **词表接口** `GET /api/recipes/tags` 供前端选择器与 id→显示名解析使用；管理接口见 `/api/tags`、`/api/tag-categories`
 
 ### AI Provider 架构
 
 ```mermaid
 graph LR
-    A[tagging.Completer / 识别接口] --> B[Provider 接口]
+    A[TagService / 识别接口] --> B[Provider 接口]
     B --> C[OpenAI 兼容实现]
     B --> D[Ollama 实现]
     C --> E[OpenAI/DeepSeek/通义/智谱]

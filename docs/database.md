@@ -31,7 +31,6 @@ erDiagram
         int cook_time_minutes
         varchar difficulty
         smallint rating
-        jsonb tags
         jsonb images
         timestamptz created_at
         timestamptz updated_at
@@ -91,10 +90,11 @@ erDiagram
 | cook_time_minutes | INT | | 烹饪耗时（分钟） |
 | difficulty | VARCHAR(20) | CHECK in (easy,medium,hard) | 难度 |
 | rating | SMALLINT | CHECK 1-5 | 自评 |
-| tags | JSONB | | 标签 `["川菜","快手菜"]` |
 | images | JSONB | | 图片 `["/uploads/xx.jpg"]` |
 | created_at | TIMESTAMPTZ | | |
 | updated_at | TIMESTAMPTZ | | |
+
+> 标签不再存于 `recipes` 表，已拆分为 `tag_categories` / `tags` / `recipe_tags` / `recipe_ingredient_tags` / `tag_rules`，详见 [标签体系](./tags.md)。
 
 ### 2.3 restaurants — 餐厅表
 
@@ -149,8 +149,15 @@ CREATE UNIQUE INDEX idx_users_email ON users(email);
 
 -- recipes（按用户查询 + 按创建时间排序）
 CREATE INDEX idx_recipes_user_created ON recipes(user_id, created_at DESC);
-CREATE INDEX idx_recipes_tags ON recipes USING GIN (tags);
 CREATE INDEX idx_recipes_name ON recipes(name);
+
+-- 标签（菜谱关联按 tag_id 反查；互斥组用于选择器）
+CREATE INDEX idx_recipe_tags_tag ON recipe_tags(tag_id);
+CREATE INDEX idx_recipe_ingredient_tags_tag ON recipe_ingredient_tags(tag_id);
+CREATE INDEX idx_tags_category ON tags(category_id);
+CREATE INDEX idx_tags_owner ON tags(owner_id);
+CREATE INDEX idx_tags_mutex ON tags(mutex_group);
+CREATE INDEX idx_tag_rules_active ON tag_rules(is_active, sort_order);
 
 -- restaurants
 CREATE INDEX idx_restaurants_user_created ON restaurants(user_id, created_at DESC);
@@ -162,7 +169,8 @@ CREATE INDEX idx_dishes_restaurant ON dishes(restaurant_id, eaten_at DESC);
 
 ## 4. 关键设计说明
 
-- **JSONB 存储结构化数据**：食材、步骤、标签、图片使用 JSONB，避免过度建表，同时支持 GIN 索引查询
+- **JSONB 存储结构化数据**：食材、步骤、图片使用 JSONB，避免过度建表
+- **标签字典化**：标签拆到独立表，菜谱与标签按 id 关联，区分菜谱级（手选）与食材级（规则派生）；预设与用户自定义共存，详见 [标签体系](./tags.md)
 - **UUID 主键**：使用 PostgreSQL 内置 `gen_random_uuid()`，避免自增主键暴露数据量
 - **软删除策略**：当前采用硬删除（DELETE），后续如需可回收再引入 deleted_at
 - **菜品与餐厅强关联**：菜品通过 restaurant_id 归属餐厅，级联删除保证数据一致
@@ -173,8 +181,14 @@ CREATE INDEX idx_dishes_restaurant ON dishes(restaurant_id, eaten_at DESC);
 | 文件 | 内容 |
 |---|---|
 | `server/migrations/001_init.sql` | 建表 + 索引 + 触发器 |
-| `server/migrations/002_seed.sql` | 测试种子数据 |
+| `server/migrations/002_seed.sql` | 测试种子数据（示例菜谱使用固定 UUID，便于标签种子引用） |
 | `server/migrations/003_favorites.sql` | 菜谱收藏表 |
+| `server/migrations/004_tags.sql` | 标签分类/标签/关联/规则表 + 全局预设词表与规则种子 |
+| `server/migrations/005_recipe_tags_migrate.sql` | 存量 `recipes.tags` → 自定义标签并删除该列；演示菜谱标签种子 |
+
+> **执行方式**：Docker 路径由 `scripts/migrate-docker.sh` 通过 `schema_migrations` 表记录并跳过已执行文件；
+> 本地/远程路径 `scripts/migrate.sh` **每次全量重跑**所有 `.sql`，因此所有迁移文件必须幂等。
+> `recipes.tags` 的建表列与 GIN 索引已从 `001` 中移除。
 
 ## 6. 迁移记录
 
@@ -183,3 +197,5 @@ CREATE INDEX idx_dishes_restaurant ON dishes(restaurant_id, eaten_at DESC);
 | 001 | 2026-08-11 | 初始建表 |
 | 002 | 2026-08-11 | 种子数据 |
 | 003 | 2026-08-16 | 菜谱收藏表 |
+| 004 | 2026-10-07 | 标签字典化：分类/标签/关联/规则表 + 预设词表种子 |
+| 005 | 2026-10-07 | 存量标签迁移，删除 `recipes.tags` 列 |
