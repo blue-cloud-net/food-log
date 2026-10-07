@@ -23,16 +23,31 @@ type ExportService struct {
 	restaurantRepo *repository.RestaurantRepo
 	dishRepo       *repository.DishRepo
 	favoriteRepo   *repository.FavoriteRepo
+	tagRepo        *repository.TagRepo
+	tagService     *TagService
 }
 
-func NewExportService(pool *pgxpool.Pool, recipeRepo *repository.RecipeRepo, restaurantRepo *repository.RestaurantRepo, dishRepo *repository.DishRepo, favoriteRepo *repository.FavoriteRepo) *ExportService {
-	return &ExportService{pool: pool, recipeRepo: recipeRepo, restaurantRepo: restaurantRepo, dishRepo: dishRepo, favoriteRepo: favoriteRepo}
+func NewExportService(pool *pgxpool.Pool, recipeRepo *repository.RecipeRepo, restaurantRepo *repository.RestaurantRepo, dishRepo *repository.DishRepo, favoriteRepo *repository.FavoriteRepo, tagRepo *repository.TagRepo, tagService *TagService) *ExportService {
+	return &ExportService{
+		pool:           pool,
+		recipeRepo:     recipeRepo,
+		restaurantRepo: restaurantRepo,
+		dishRepo:       dishRepo,
+		favoriteRepo:   favoriteRepo,
+		tagRepo:        tagRepo,
+		tagService:     tagService,
+	}
 }
 
 // ExportData 组装完整导出数据（JSON）
+// 注意：导出文件里菜谱的 tags / ingredient_tags 为标签「名称」而非 id，
+// 这样备份可跨数据库导入（id 在不同库间不通用）。
 func (s *ExportService) ExportData(ctx context.Context, userID string) (*model.ExportData, error) {
 	recipes, err := s.recipeRepo.ListAll(ctx, userID)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.attachTagNames(ctx, recipes); err != nil {
 		return nil, err
 	}
 	restaurants, err := s.restaurantRepo.ListAll(ctx, userID)
@@ -57,16 +72,68 @@ func (s *ExportService) ExportData(ctx context.Context, userID string) (*model.E
 	}, nil
 }
 
+// attachTagNames 把菜谱的标签 id 替换为标签名称（导出场景）
+func (s *ExportService) attachTagNames(ctx context.Context, recipes []*model.Recipe) error {
+	if len(recipes) == 0 {
+		return nil
+	}
+	ids := make([]string, len(recipes))
+	for i, r := range recipes {
+		ids[i] = r.ID
+	}
+	manual, ingredient, err := s.tagRepo.TagsForRecipes(ctx, ids)
+	if err != nil {
+		return err
+	}
+
+	allIDs := make([]string, 0, len(manual)+len(ingredient))
+	seen := map[string]bool{}
+	collect := func(group map[string][]string) {
+		for _, tagIDs := range group {
+			for _, id := range tagIDs {
+				if !seen[id] {
+					seen[id] = true
+					allIDs = append(allIDs, id)
+				}
+			}
+		}
+	}
+	collect(manual)
+	collect(ingredient)
+	nameOf, err := s.tagRepo.NamesByIDs(ctx, allIDs)
+	if err != nil {
+		return err
+	}
+
+	toNames := func(tagIDs []string) []string {
+		out := make([]string, 0, len(tagIDs))
+		for _, id := range tagIDs {
+			if name, ok := nameOf[id]; ok {
+				out = append(out, name)
+			}
+		}
+		return out
+	}
+	for _, r := range recipes {
+		r.Tags = toNames(manual[r.ID])
+		r.IngredientTags = toNames(ingredient[r.ID])
+	}
+	return nil
+}
+
 // ExportCSV 导出菜谱 CSV 内容
 func (s *ExportService) ExportCSV(ctx context.Context, userID string) ([]byte, error) {
 	recipes, err := s.recipeRepo.ListAll(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
+	if err := s.attachTagNames(ctx, recipes); err != nil {
+		return nil, err
+	}
 
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
-	if err := w.Write([]string{"菜名", "描述", "食材", "步骤", "耗时(分钟)", "难度", "评分", "标签", "创建时间"}); err != nil {
+	if err := w.Write([]string{"菜名", "描述", "食材", "步骤", "耗时(分钟)", "难度", "评分", "菜谱标签", "食材标签", "创建时间"}); err != nil {
 		return nil, err
 	}
 	for _, r := range recipes {
@@ -79,6 +146,7 @@ func (s *ExportService) ExportCSV(ctx context.Context, userID string) ([]byte, e
 			r.Difficulty,
 			itov(r.Rating),
 			strings.Join(r.Tags, "/"),
+			strings.Join(r.IngredientTags, "/"),
 			r.CreatedAt.Format("2006-01-02 15:04"),
 		}); err != nil {
 			return nil, err
@@ -119,10 +187,27 @@ func (s *ExportService) ImportData(ctx context.Context, userID string, data *mod
 			continue
 		}
 		oldID := r.ID
+
+		// 备份里的标签是名称，导入时映射为当前库的标签 id（未收录的名称建为自定义标签）
+		manualIDs, err := s.tagService.RecognizeTagNames(ctx, userID, r.Tags)
+		if err != nil {
+			return fmt.Errorf("导入菜谱 %q 的标签失败: %w", r.Name, err)
+		}
+		ingredientIDs, err := s.tagService.RecognizeTagNames(ctx, userID, r.IngredientTags)
+		if err != nil {
+			return fmt.Errorf("导入菜谱 %q 的食材标签失败: %w", r.Name, err)
+		}
+
 		rec := cloneRecipe(r)
 		rec.UserID = userID
 		if err := s.recipeRepo.Create(ctx, rec); err != nil {
 			return fmt.Errorf("导入菜谱 %q 失败: %w", r.Name, err)
+		}
+		if err := s.tagRepo.ReplaceRecipeTags(ctx, rec.ID, manualIDs); err != nil {
+			return fmt.Errorf("导入菜谱 %q 的标签关联失败: %w", r.Name, err)
+		}
+		if err := s.tagRepo.ReplaceRecipeIngredientTags(ctx, rec.ID, ingredientIDs); err != nil {
+			return fmt.Errorf("导入菜谱 %q 的食材标签关联失败: %w", r.Name, err)
 		}
 		idMap[oldID] = rec.ID
 	}
