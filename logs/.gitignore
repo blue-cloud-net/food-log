@@ -1,0 +1,5 @@
+# 运行时日志目录（被 start-dev.sh --bg 自动生成）
+*.log
+*.pid
+foodlog-server
+build.err
