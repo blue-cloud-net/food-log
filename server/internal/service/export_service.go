@@ -25,9 +25,11 @@ type ExportService struct {
 	favoriteRepo   *repository.FavoriteRepo
 	tagRepo        *repository.TagRepo
 	tagService     *TagService
+	shopTagRepo    *repository.ShopTagRepo
+	shopTagService *ShopTagService
 }
 
-func NewExportService(pool *pgxpool.Pool, recipeRepo *repository.RecipeRepo, restaurantRepo *repository.RestaurantRepo, dishRepo *repository.DishRepo, favoriteRepo *repository.FavoriteRepo, tagRepo *repository.TagRepo, tagService *TagService) *ExportService {
+func NewExportService(pool *pgxpool.Pool, recipeRepo *repository.RecipeRepo, restaurantRepo *repository.RestaurantRepo, dishRepo *repository.DishRepo, favoriteRepo *repository.FavoriteRepo, tagRepo *repository.TagRepo, tagService *TagService, shopTagRepo *repository.ShopTagRepo, shopTagService *ShopTagService) *ExportService {
 	return &ExportService{
 		pool:           pool,
 		recipeRepo:     recipeRepo,
@@ -36,12 +38,14 @@ func NewExportService(pool *pgxpool.Pool, recipeRepo *repository.RecipeRepo, res
 		favoriteRepo:   favoriteRepo,
 		tagRepo:        tagRepo,
 		tagService:     tagService,
+		shopTagRepo:    shopTagRepo,
+		shopTagService: shopTagService,
 	}
 }
 
 // ExportData 组装完整导出数据（JSON）
-// 注意：导出文件里菜谱的 tags / ingredient_tags 为标签「名称」而非 id，
-// 这样备份可跨数据库导入（id 在不同库间不通用）。
+// 注意：导出文件里菜谱的 tags / ingredient_tags 以及餐厅、菜品的 tags 均为标签
+// 「名称」而非 id，这样备份可跨数据库导入（id 在不同库间不通用）。
 func (s *ExportService) ExportData(ctx context.Context, userID string) (*model.ExportData, error) {
 	recipes, err := s.recipeRepo.ListAll(ctx, userID)
 	if err != nil {
@@ -54,8 +58,14 @@ func (s *ExportService) ExportData(ctx context.Context, userID string) (*model.E
 	if err != nil {
 		return nil, err
 	}
+	if err := s.attachRestaurantTagNames(ctx, restaurants); err != nil {
+		return nil, err
+	}
 	dishes, err := s.dishRepo.ListAll(ctx, userID)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.attachDishTagNames(ctx, dishes); err != nil {
 		return nil, err
 	}
 	favorites, err := s.favoriteRepo.ListIDs(ctx, userID)
@@ -119,6 +129,87 @@ func (s *ExportService) attachTagNames(ctx context.Context, recipes []*model.Rec
 		r.IngredientTags = toNames(ingredient[r.ID])
 	}
 	return nil
+}
+
+// attachRestaurantTagNames 把餐厅标签 id 替换为标签名称（导出场景）
+func (s *ExportService) attachRestaurantTagNames(ctx context.Context, list []*model.Restaurant) error {
+	if len(list) == 0 {
+		return nil
+	}
+	ids := make([]string, len(list))
+	for i, rst := range list {
+		ids[i] = rst.ID
+	}
+	byID, err := s.shopTagNameMap(ctx, repository.ShopTagDomainRestaurant, ids)
+	if err != nil {
+		return err
+	}
+	for _, rst := range list {
+		if names, ok := byID[rst.ID]; ok {
+			rst.Tags = names
+		} else {
+			rst.Tags = []string{}
+		}
+	}
+	return nil
+}
+
+// attachDishTagNames 把菜品标签 id 替换为标签名称（导出场景）
+func (s *ExportService) attachDishTagNames(ctx context.Context, list []*model.Dish) error {
+	if len(list) == 0 {
+		return nil
+	}
+	ids := make([]string, len(list))
+	for i, d := range list {
+		ids[i] = d.ID
+	}
+	byID, err := s.shopTagNameMap(ctx, repository.ShopTagDomainDish, ids)
+	if err != nil {
+		return err
+	}
+	for _, d := range list {
+		if names, ok := byID[d.ID]; ok {
+			d.Tags = names
+		} else {
+			d.Tags = []string{}
+		}
+	}
+	return nil
+}
+
+// shopTagNameMap 返回 实体 id → 标签名称列表，仅包含有关联标签的实体
+func (s *ExportService) shopTagNameMap(ctx context.Context, domain repository.ShopTagDomain, entityIDs []string) (map[string][]string, error) {
+	byID, err := s.shopTagRepo.TagsFor(ctx, domain, entityIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	allIDs := []string{}
+	seen := map[string]bool{}
+	for _, tagIDs := range byID {
+		for _, id := range tagIDs {
+			if !seen[id] {
+				seen[id] = true
+				allIDs = append(allIDs, id)
+			}
+		}
+	}
+	nameOf, err := s.shopTagRepo.NamesByIDs(ctx, domain, allIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	out := map[string][]string{}
+	for entityID, tagIDs := range byID {
+		names := make([]string, 0, len(tagIDs))
+		for _, id := range tagIDs {
+			if name, ok := nameOf[id]; ok {
+				names = append(names, name)
+			}
+		}
+		out[entityID] = names
+	}
+	return out, nil
 }
 
 // ExportCSV 导出菜谱 CSV 内容
@@ -223,9 +314,19 @@ func (s *ExportService) ImportData(ctx context.Context, userID string, data *mod
 		rec.ID = ""
 		rec.UserID = userID
 		rec.DishCount = 0
+
+		// 备份里的标签是名称，导入时映射为当前库的标签 id（未收录的名称建为自定义标签）
+		tagIDs, err := s.shopTagService.RecognizeTagNames(ctx, userID, repository.ShopTagDomainRestaurant, rec.Tags)
+		if err != nil {
+			return fmt.Errorf("导入餐厅 %q 的标签失败: %w", rst.Name, err)
+		}
 		if err := s.restaurantRepo.Create(ctx, &rec); err != nil {
 			return fmt.Errorf("导入餐厅 %q 失败: %w", rst.Name, err)
 		}
+		if err := s.shopTagRepo.ReplaceTags(ctx, repository.ShopTagDomainRestaurant, rec.ID, tagIDs); err != nil {
+			return fmt.Errorf("写入餐厅 %q 的标签失败: %w", rst.Name, err)
+		}
+		rec.Tags = tagIDs
 		restMap[oldID] = rec.ID
 	}
 
@@ -242,8 +343,16 @@ func (s *ExportService) ImportData(ctx context.Context, userID string, data *mod
 		rec.ID = ""
 		rec.UserID = userID
 		rec.RestaurantID = newRestID
+
+		tagIDs, err := s.shopTagService.RecognizeTagNames(ctx, userID, repository.ShopTagDomainDish, rec.Tags)
+		if err != nil {
+			return fmt.Errorf("导入菜品 %q 的标签失败: %w", d.Name, err)
+		}
 		if err := s.dishRepo.Create(ctx, &rec); err != nil {
 			return fmt.Errorf("导入菜品 %q 失败: %w", d.Name, err)
+		}
+		if err := s.shopTagRepo.ReplaceTags(ctx, repository.ShopTagDomainDish, rec.ID, tagIDs); err != nil {
+			return fmt.Errorf("写入菜品 %q 的标签失败: %w", d.Name, err)
 		}
 	}
 
