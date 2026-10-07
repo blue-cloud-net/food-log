@@ -35,6 +35,7 @@ var restaurantSortCols = map[string]string{
 const restaurantCols = `r.id, r.user_id, r.name, COALESCE(r.address,''),
 	COALESCE(r.description,''), COALESCE(r.recommend_rating,0), COALESCE(r.value_rating,0),
 	COALESCE(r.ambience_rating,0), COALESCE(r.service_rating,0), r.images, r.lat, r.lng,
+	r.is_visited,
 	(SELECT COUNT(*) FROM dishes d WHERE d.restaurant_id = r.id) AS dish_count,
 	r.created_at, r.updated_at`
 
@@ -44,7 +45,7 @@ func scanRestaurant(row pgx.Row) (*model.Restaurant, error) {
 	err := row.Scan(&rst.ID, &rst.UserID, &rst.Name, &rst.Address,
 		&rst.Description, &rst.RecommendRating, &rst.ValueRating,
 		&rst.AmbienceRating, &rst.ServiceRating, &images, &rst.Lat, &rst.Lng,
-		&rst.DishCount, &rst.CreatedAt, &rst.UpdatedAt)
+		&rst.IsVisited, &rst.DishCount, &rst.CreatedAt, &rst.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -70,13 +71,13 @@ func createRestaurant(ctx context.Context, q dbExecutor, rst *model.Restaurant) 
 	tags := rst.Tags
 	row := q.QueryRow(ctx,
 		`INSERT INTO restaurants AS r (user_id, name, address, description,
-		   recommend_rating, value_rating, ambience_rating, service_rating, images, lat, lng)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+		   recommend_rating, value_rating, ambience_rating, service_rating, images, lat, lng, is_visited)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 		 RETURNING `+restaurantCols,
 		rst.UserID, rst.Name, rst.Address, rst.Description,
 		nullableInt(rst.RecommendRating), nullableInt(rst.ValueRating),
 		nullableInt(rst.AmbienceRating), nullableInt(rst.ServiceRating),
-		images, rst.Lat, rst.Lng)
+		images, rst.Lat, rst.Lng, rst.IsVisited)
 	if err := scanRestaurantRow(ctx, row, rst); err != nil {
 		return err
 	}
@@ -95,7 +96,8 @@ func (r *RestaurantRepo) GetByID(ctx context.Context, id string) (*model.Restaur
 }
 
 // List 餐厅列表（分页 + 关键词 + 标签筛选 + 排序）
-func (r *RestaurantRepo) List(ctx context.Context, userID string, q *model.PageQuery, keyword, tagID, sort string) ([]*model.Restaurant, int64, error) {
+// visited 为 "true"/"false"（其余值不过滤）用于「已探店/未探店」
+func (r *RestaurantRepo) List(ctx context.Context, userID string, q *model.PageQuery, keyword, tagID, sort, visited string) ([]*model.Restaurant, int64, error) {
 	var where []string
 	var args []any
 	args = append(args, userID)
@@ -109,6 +111,12 @@ func (r *RestaurantRepo) List(ctx context.Context, userID string, q *model.PageQ
 		args = append(args, tagID)
 		where = append(where, fmt.Sprintf(
 			"EXISTS (SELECT 1 FROM restaurant_tag_links rtl WHERE rtl.restaurant_id = r.id AND rtl.tag_id = $%d::uuid)", len(args)))
+	}
+	switch visited {
+	case "true":
+		where = append(where, "r.is_visited = true")
+	case "false":
+		where = append(where, "r.is_visited = false")
 	}
 	whereClause := strings.Join(where, " AND ")
 
@@ -161,12 +169,12 @@ func updateRestaurant(ctx context.Context, q dbExecutor, rst *model.Restaurant) 
 		`UPDATE restaurants AS r SET
 		   name=$2, address=$3, description=$4,
 		   recommend_rating=$5, value_rating=$6, ambience_rating=$7, service_rating=$8,
-		   images=$9, lat=$10, lng=$11
+		   images=$9, lat=$10, lng=$11, is_visited=$12, updated_at=now()
 		 WHERE r.id=$1 RETURNING `+restaurantCols,
 		rst.ID, rst.Name, rst.Address, rst.Description,
 		nullableInt(rst.RecommendRating), nullableInt(rst.ValueRating),
 		nullableInt(rst.AmbienceRating), nullableInt(rst.ServiceRating),
-		images, rst.Lat, rst.Lng)
+		images, rst.Lat, rst.Lng, rst.IsVisited)
 	if err := scanRestaurantRow(ctx, row, rst); err != nil {
 		return err
 	}
@@ -177,6 +185,14 @@ func updateRestaurant(ctx context.Context, q dbExecutor, rst *model.Restaurant) 
 // Delete 删除餐厅（级联删除其下菜品与标签关联）
 func (r *RestaurantRepo) Delete(ctx context.Context, id string) error {
 	_, err := r.pool.Exec(ctx, `DELETE FROM restaurants WHERE id = $1`, id)
+	return err
+}
+
+// SetVisited 设置「已探店」标记
+func (r *RestaurantRepo) SetVisited(ctx context.Context, id string, visited bool) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE restaurants SET is_visited = $2, updated_at = now() WHERE id = $1`,
+		id, visited)
 	return err
 }
 

@@ -112,14 +112,17 @@ func Setup(cfg *config.Config, pool *pgxpool.Pool) *gin.Engine {
 			restaurants.PUT("/:id", restaurantHandler.Update)
 			restaurants.DELETE("/:id", restaurantHandler.Delete)
 			restaurants.POST("/:id/dishes", restaurantHandler.AddDish)
+			restaurants.PUT("/:id/visited", restaurantHandler.SetVisited)
 		}
 
 		// 菜品
 		dishes := api.Group("/dishes", authMW)
 		{
 			// 静态路由需在 /:id 之前注册
+			dishes.GET("", restaurantHandler.ListDishes)
 			dishes.GET("/tags", shopTagHandler.List(repository.ShopTagDomainDish))
 			dishes.PUT("/:id", restaurantHandler.UpdateDish)
+			dishes.PUT("/:id/like", restaurantHandler.SetDishLiked)
 			dishes.DELETE("/:id", restaurantHandler.DeleteDish)
 		}
 

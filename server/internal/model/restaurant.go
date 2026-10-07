@@ -17,6 +17,7 @@ type Restaurant struct {
 	Images          []string  `json:"images"`
 	Lat             *float64  `json:"lat"`
 	Lng             *float64  `json:"lng"`
+	IsVisited       bool      `json:"is_visited"` // 是否已探店（false = 未探店）
 	DishCount       int       `json:"dish_count"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
@@ -34,6 +35,8 @@ type Dish struct {
 	Tags         []string  `json:"tags"`   // 菜品标签 id 列表（用户手选）
 	Images       []string  `json:"images"`
 	EatenAt      *string   `json:"eaten_at"`
+	IsLiked      bool      `json:"is_liked"`                    // 喜欢该菜品
+	RestaurantName string  `json:"restaurant_name,omitempty"`   // 列表场景下所属餐厅名
 	CreatedAt    time.Time `json:"created_at"`
 }
 

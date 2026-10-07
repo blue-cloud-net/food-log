@@ -162,8 +162,9 @@ func (s *RestaurantService) GetDetail(ctx context.Context, userID, id, dishTagID
 }
 
 // List 餐厅列表（分页 + 关键词 + 标签筛选 + 排序）
-func (s *RestaurantService) List(ctx context.Context, userID string, q *model.PageQuery, keyword, tagID, sort string) (*model.Paginated, error) {
-	list, total, err := s.restaurantRepo.List(ctx, userID, q, keyword, tagID, sort)
+// visited 为 "true"/"false"（其余值不过滤）用于「已探店/未探店」
+func (s *RestaurantService) List(ctx context.Context, userID string, q *model.PageQuery, keyword, tagID, sort, visited string) (*model.Paginated, error) {
+	list, total, err := s.restaurantRepo.List(ctx, userID, q, keyword, tagID, sort, visited)
 	if err != nil {
 		return nil, err
 	}
@@ -212,6 +213,44 @@ func (s *RestaurantService) Delete(ctx context.Context, userID, id string) error
 		return err
 	}
 	return s.restaurantRepo.Delete(ctx, id)
+}
+
+// SetVisited 标记「已探店/未探店」
+func (s *RestaurantService) SetVisited(ctx context.Context, userID, id string, visited bool) error {
+	if _, err := s.Get(ctx, userID, id); err != nil {
+		return err
+	}
+	return s.restaurantRepo.SetVisited(ctx, id, visited)
+}
+
+// ListDishes 菜品列表（分页，跨餐厅；liked 为 true 时仅返回「喜欢」的菜品）
+func (s *RestaurantService) ListDishes(ctx context.Context, userID string, q *model.PageQuery, liked bool, keyword, tagID, restaurantID string) (*model.Paginated, error) {
+	list, total, err := s.dishRepo.List(ctx, userID, q, liked, keyword, tagID, restaurantID)
+	if err != nil {
+		return nil, err
+	}
+	s.fillDishTags(ctx, list)
+
+	items := make([]any, len(list))
+	for i, d := range list {
+		items[i] = d
+	}
+	return &model.Paginated{List: items, Total: total, Page: q.Page, PageSize: q.PageSize}, nil
+}
+
+// SetDishLiked 标记菜品「喜欢」（校验归属）
+func (s *RestaurantService) SetDishLiked(ctx context.Context, userID, dishID string, liked bool) error {
+	existing, err := s.dishRepo.GetByID(ctx, dishID)
+	if err != nil {
+		return err
+	}
+	if existing == nil {
+		return ErrNotFound
+	}
+	if existing.UserID != userID {
+		return ErrForbidden
+	}
+	return s.dishRepo.SetLiked(ctx, dishID, liked)
 }
 
 // AddDish 添加菜品（校验餐厅归属，菜品行 + 标签关联在同一事务内写入）
