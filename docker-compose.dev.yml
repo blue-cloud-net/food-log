@@ -44,7 +44,9 @@ services:
       DATA_DIR: /app/data
       DATABASE_URL: postgres://${POSTGRES_USER:-foodlog}:${POSTGRES_PASSWORD:-foodlog123}@db:5432/${POSTGRES_DB:-foodlog}?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-foodlog-secret-change-me}
-      CLIENT_ORIGIN: http://localhost:${CLIENT_PORT:-5173}
+      # 开发环境放开来源：浏览器经 VS Code 端口转发或自定义端口访问时 Origin 会变，
+      # 严格白名单会让登录等请求被 CORS 中间件以 403 拒绝（生产编排仍用白名单）
+      CLIENT_ORIGIN: "*"
       AI_PROVIDER: ${AI_PROVIDER:-}
       AI_BASE_URL: ${AI_BASE_URL:-}
       AI_API_KEY: ${AI_API_KEY:-}
