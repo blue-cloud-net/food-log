@@ -1,0 +1,14 @@
+# =============================================
+# 开发镜像：pnpm + Vite dev server
+# 源码通过 docker-compose.dev.yml 挂载到 /app
+# =============================================
+FROM node:24-alpine
+
+# 与 client/package.json 的 packageManager 保持一致
+RUN npm i -g pnpm@11.24.0
+
+WORKDIR /app
+
+EXPOSE 5173
+
+CMD ["pnpm", "dev", "--host", "0.0.0.0"]

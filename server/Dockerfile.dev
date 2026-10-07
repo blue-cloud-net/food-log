@@ -1,0 +1,23 @@
+# =============================================
+# 开发镜像：Go + air 热重载
+# 源码通过 docker-compose.dev.yml 挂载到 /app
+# =============================================
+FROM golang:1.26-alpine
+
+# air 版本可覆盖：docker compose -f docker-compose.dev.yml build --build-arg AIR_VERSION=v1.61.7
+ARG AIR_VERSION=latest
+
+RUN apk add --no-cache git tzdata && \
+    go install github.com/air-verse/air@${AIR_VERSION}
+
+ENV TZ=Asia/Shanghai
+
+WORKDIR /app
+
+# 预下载依赖到镜像的模块缓存，容器内改代码后重编译无需再联网
+COPY go.mod go.sum ./
+RUN go mod download
+
+EXPOSE 8080
+
+CMD ["air", "-c", ".air.toml"]
