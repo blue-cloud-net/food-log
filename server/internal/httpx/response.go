@@ -2,6 +2,7 @@ package httpx
 
 import (
 	"errors"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -54,6 +55,8 @@ func RespondErrorWithErr(c *gin.Context, err error) {
 	case errors.Is(err, service.ErrSystemTagReadonly):
 		RespondError(c, http.StatusForbidden, CodeForbidden, "系统预设标签不可修改")
 	default:
+		// 未分类的业务错误：记录到服务端日志，避免只返回 500 而无从排查
+		log.Printf("[error] %s %s: %v", c.Request.Method, c.Request.URL.Path, err)
 		RespondError(c, http.StatusInternalServerError, CodeInternal, "服务器内部错误")
 	}
 }
