@@ -3,9 +3,6 @@
     <div class="page-header">
       <h2 class="page-title">库存食材</h2>
       <div class="flex items-center gap-2">
-        <el-button v-if="!selectionMode" @click="router.push('/inventory/locations')">
-          <el-icon><Location /></el-icon>&nbsp;位置管理
-        </el-button>
         <el-button v-if="!selectionMode" @click="enterSelection">
           <el-icon><Select /></el-icon>&nbsp;批量
         </el-button>

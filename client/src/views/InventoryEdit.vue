@@ -18,9 +18,7 @@
             </el-option-group>
           </el-select>
           <div class="text-xs text-[#909399] mt-1">
-            找不到合适的位置？到
-            <router-link to="/inventory/locations" class="text-primary">位置管理</router-link>
-            里添加。
+            找不到合适的位置？到「设置 → 存放位置」里添加。
           </div>
         </el-form-item>
 
