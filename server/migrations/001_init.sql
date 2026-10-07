@@ -27,7 +27,6 @@ CREATE TABLE IF NOT EXISTS recipes (
     cook_time_minutes INT,
     difficulty        VARCHAR(20) CHECK (difficulty IN ('easy', 'medium', 'hard')),
     rating            SMALLINT CHECK (rating BETWEEN 1 AND 5),
-    tags              JSONB NOT NULL DEFAULT '[]',
     images            JSONB NOT NULL DEFAULT '[]',
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -69,7 +68,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email    ON users(email);
 
 CREATE INDEX IF NOT EXISTS idx_recipes_user_created ON recipes(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_recipes_name         ON recipes(name);
-CREATE INDEX IF NOT EXISTS idx_recipes_tags         ON recipes USING GIN (tags);
 
 CREATE INDEX IF NOT EXISTS idx_restaurants_user_created ON restaurants(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_restaurants_cuisine      ON restaurants(cuisine_type);

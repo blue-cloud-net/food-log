@@ -13,19 +13,20 @@ VALUES
      '$2a$10$6jl7SFSLBZRwC1BPgxThS.JpTsRZe8BHuzj.BRl.HWpNoxMepl7Ze')
 ON CONFLICT (email) DO NOTHING;
 
--- 示例菜谱
-INSERT INTO recipes (user_id, name, description, ingredients, steps, cook_time_minutes, difficulty, rating, tags)
+-- 示例菜谱（固定 UUID，便于标签种子引用；tags 已拆分到 004/005 的标签表）
+INSERT INTO recipes (id, user_id, name, description, ingredients, steps, cook_time_minutes, difficulty, rating)
 VALUES
-    ('11111111-1111-1111-1111-111111111111', '麻婆豆腐',
+    ('22222222-2222-2222-2222-222222222201', '11111111-1111-1111-1111-111111111111', '麻婆豆腐',
      '经典的川菜家常做法，麻辣鲜香超下饭。',
      '[{"name":"嫩豆腐","amount":"1","unit":"盒"},{"name":"牛肉末","amount":"100","unit":"克"},{"name":"豆瓣酱","amount":"2","unit":"勺"}]',
      '[{"order":1,"content":"豆腐切块，焯水去豆腥"},{"order":2,"content":"炒香肉末和豆瓣酱"},{"order":3,"content":"下豆腐小火煮5分钟"},{"order":4,"content":"勾芡撒花椒面出锅"}]',
-     20, 'medium', 5, '["川菜","下饭菜"]'),
-    ('11111111-1111-1111-1111-111111111111', '番茄炒蛋',
+     20, 'medium', 5),
+    ('22222222-2222-2222-2222-222222222202', '11111111-1111-1111-1111-111111111111', '番茄炒蛋',
      '十分钟搞定的快手家常菜。',
      '[{"name":"番茄","amount":"2","unit":"个"},{"name":"鸡蛋","amount":"3","unit":"个"},{"name":"葱花","amount":"少许","unit":""}]',
      '[{"order":1,"content":"鸡蛋打散炒熟盛出"},{"order":2,"content":"番茄炒出汁"},{"order":3,"content":"倒回鸡蛋翻炒调味"}]',
-     10, 'easy', 4, '["快手菜","家常"]');
+     10, 'easy', 4)
+ON CONFLICT (id) DO NOTHING;
 
 -- 示例餐厅
 INSERT INTO restaurants (id, user_id, name, address, cuisine_type, description, avg_rating)
