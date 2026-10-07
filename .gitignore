@@ -4,6 +4,7 @@
 .env.*.local
 
 # ===== 前端 =====
+.pnpm-store/
 node_modules/
 dist/
 client/dist/
@@ -12,11 +13,18 @@ client/dist/
 
 # ===== Go 后端 =====
 server/bin/
-server/uploads/*
-!server/uploads/.gitkeep
+server/.air/
+# go:embed 目录：dist/ 规则会整体排除该目录，这里显式解除以保留占位文件
+!server/internal/web/dist/
+server/internal/web/dist/*
+!server/internal/web/dist/.gitkeep
 *.exe
 *.test
 *.out
+
+# ===== 运行时数据（凭证 / 上传中转 / 图片）=====
+data/*
+!data/.gitkeep
 
 # ===== 日志与临时文件 =====
 *.log
@@ -26,7 +34,3 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
-
-# ===== 数据 =====
-pgdata/
-*.sqlite

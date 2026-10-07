@@ -1,0 +1,10 @@
+数据目录（DATA_DIR）挂载点，容器内为 /app/data。
+
+目录结构：
+  credentials/  自动生成的 admin 密码等凭证（权限 0700，文件 0600）
+  tmp/          上传中转与原子写入的中间文件，服务启动时清空
+  images/       上传图片，按用途分子目录
+    recipe/        菜谱图片     images/recipe/YYYY/MM/<uuid>.jpg
+    restaurant/    餐厅与菜品图片 images/restaurant/YYYY/MM/<uuid>.jpg
+
+该文件用于让 git 跟踪本目录；其余内容已被 .gitignore 忽略。
