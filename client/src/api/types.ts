@@ -146,6 +146,41 @@ export interface UploadFile {
   thumb_url: string
 }
 
+/** 存放位置大类：fridge 冰箱内 / outside 外面 */
+export type StorageArea = 'fridge' | 'outside'
+
+/** 存放位置（全局预设 owner_id 为空且 is_system=true，只读；否则为本人自定义） */
+export interface StorageLocation {
+  id: string
+  owner_id?: string
+  area: StorageArea
+  name: string
+  sort_order: number
+  is_system: boolean
+}
+
+/** 库存食材条目 */
+export interface InventoryItem {
+  id: string
+  user_id: string
+  location_id: string
+  name: string
+  amount: string
+  unit: string
+  category: string
+  /** YYYY-MM-DD，null = 未设置 */
+  expire_at: string | null
+  note: string
+  images: string[]
+  created_at: string
+  updated_at: string
+}
+
+export interface InventoryList {
+  list: InventoryItem[]
+  total: number
+}
+
 export interface ExportData {
   version: string
   exported_at: string

@@ -26,6 +26,7 @@ const items = [
   { to: '/', label: '首页', icon: 'HomeFilled' },
   { to: '/recipes', label: '我的菜谱', icon: 'Notebook' },
   { to: '/restaurants', label: '餐厅探店', icon: 'Shop' },
+  { to: '/inventory', label: '库存食材', icon: 'Box' },
   { to: '/tags', label: '标签管理', icon: 'CollectionTag' },
   { to: '/profile', label: '个人中心', icon: 'User' }
 ]

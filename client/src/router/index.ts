@@ -19,6 +19,10 @@ const routes = [
       { path: 'restaurants/:id/edit', name: 'restaurant-edit', component: () => import('@/views/RestaurantEdit.vue') },
       { path: 'dishes', name: 'dishes', component: () => import('@/views/DishList.vue') },
       { path: 'search', name: 'search', component: () => import('@/views/SearchResults.vue') },
+      { path: 'inventory', name: 'inventory', component: () => import('@/views/InventoryList.vue') },
+      { path: 'inventory/new', name: 'inventory-new', component: () => import('@/views/InventoryEdit.vue') },
+      { path: 'inventory/locations', name: 'inventory-locations', component: () => import('@/views/StorageLocationSettings.vue') },
+      { path: 'inventory/:id/edit', name: 'inventory-edit', component: () => import('@/views/InventoryEdit.vue') },
       { path: 'tags', name: 'tags', component: () => import('@/views/TagSettings.vue') },
       { path: 'profile', name: 'profile', component: () => import('@/views/Profile.vue') }
     ]

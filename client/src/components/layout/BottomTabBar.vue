@@ -22,6 +22,7 @@ const items = [
   { to: '/', label: '首页', icon: 'HomeFilled' },
   { to: '/recipes', label: '菜谱', icon: 'Notebook' },
   { to: '/restaurants', label: '探店', icon: 'Shop' },
+  { to: '/inventory', label: '库存', icon: 'Box' },
   { to: '/profile', label: '我的', icon: 'User' }
 ]
 
