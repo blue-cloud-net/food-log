@@ -1,15 +1,20 @@
 package router
 
 import (
+	"net/http"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"foodlog/server/internal/ai"
 	"foodlog/server/internal/config"
 	"foodlog/server/internal/handler"
+	"foodlog/server/internal/httpx"
 	"foodlog/server/internal/middleware"
 	"foodlog/server/internal/repository"
 	"foodlog/server/internal/service"
+	"foodlog/server/internal/web"
 )
 
 // Setup 装配路由
@@ -133,6 +138,21 @@ func Setup(cfg *config.Config, pool *pgxpool.Pool) *gin.Engine {
 		// 上传
 		api.POST("/upload", authMW, uploadHandler.Upload)
 	}
+
+	// 未匹配路由：/api 走 JSON 404，/images 缺失文件返回 404，其余交给前端静态资源 + SPA 回退
+	spa := web.Handler()
+	r.NoRoute(func(c *gin.Context) {
+		path := c.Request.URL.Path
+		switch {
+		case strings.HasPrefix(path, "/api/"):
+			httpx.RespondError(c, http.StatusNotFound, httpx.CodeNotFound, "接口不存在")
+		case strings.HasPrefix(path, "/images/"), path == "/images":
+			// gin 静态目录未命中时会转交 NoRoute，这里必须返回 404 而不是 SPA 页面
+			http.NotFound(c.Writer, c.Request)
+		default:
+			spa.ServeHTTP(c.Writer, c.Request)
+		}
+	})
 
 	return r
 }

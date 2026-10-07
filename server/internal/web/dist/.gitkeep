@@ -1,0 +1,5 @@
+前端构建产物目录。
+
+该目录在构建镜像（根 Dockerfile）或本地执行 scripts/build.sh 时被 client/dist 覆盖。
+仓库中保留本文件是为了让 //go:embed all:dist 在未构建前端时也能匹配到文件，
+从而保证 go build / go test / CI 可以在没有前端产物的前提下通过。
