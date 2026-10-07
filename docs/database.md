@@ -1,6 +1,6 @@
 # 数据库设计 (Database)
 
-> 更新日期：2026-08-11
+> 更新日期：2026-10-07
 > 数据库：PostgreSQL 16
 
 ## 1. ER 图
@@ -11,6 +11,21 @@ erDiagram
     users ||--o{ restaurants : "拥有"
     users ||--o{ dishes : "评价"
     restaurants ||--o{ dishes : "包含"
+
+    tag_categories ||--o{ tags : "归类"
+    tags ||--o{ recipe_tags : "被标记"
+    recipes ||--o{ recipe_tags : "标记"
+    tags ||--o{ recipe_ingredient_tags : "被标记"
+    recipes ||--o{ recipe_ingredient_tags : "自动派生"
+    tags ||--o{ tag_rules : "触发"
+
+    restaurant_tag_categories ||--o{ restaurant_tags : "归类"
+    restaurant_tags ||--o{ restaurant_tag_links : "被标记"
+    restaurants ||--o{ restaurant_tag_links : "标记"
+
+    dish_tag_categories ||--o{ dish_tags : "归类"
+    dish_tags ||--o{ dish_tag_links : "被标记"
+    dishes ||--o{ dish_tag_links : "标记"
 
     users {
         uuid id PK
@@ -40,9 +55,11 @@ erDiagram
         uuid user_id FK
         varchar name
         text address
-        varchar cuisine_type
         text description
-        numeric avg_rating
+        smallint recommend_rating
+        smallint value_rating
+        smallint ambience_rating
+        smallint service_rating
         jsonb images
         double lat
         double lng
@@ -60,6 +77,58 @@ erDiagram
         jsonb images
         date eaten_at
         timestamptz created_at
+    }
+    tag_categories {
+        uuid id PK
+        uuid owner_id FK
+        varchar name
+        varchar color
+        int sort_order
+        boolean is_system
+    }
+    tags {
+        uuid id PK
+        uuid category_id FK
+        uuid owner_id FK
+        varchar name
+        varchar mutex_group
+        int sort_order
+        boolean is_active
+        boolean is_system
+    }
+    restaurant_tag_categories {
+        uuid id PK
+        uuid owner_id FK
+        varchar name
+        varchar color
+    }
+    restaurant_tags {
+        uuid id PK
+        uuid category_id FK
+        uuid owner_id FK
+        varchar name
+        varchar mutex_group
+    }
+    restaurant_tag_links {
+        uuid restaurant_id PK
+        uuid tag_id PK
+    }
+    dish_tag_categories {
+        uuid id PK
+        uuid owner_id FK
+        varchar name
+        varchar color
+    }
+    dish_tags {
+        uuid id PK
+        uuid category_id FK
+        uuid owner_id FK
+        varchar name
+        varchar mutex_group
+    }
+    dish_tag_links {
+        uuid dish_id PK
+        uuid tag_id PK
     }
 ```
 
@@ -104,14 +173,22 @@ erDiagram
 | user_id | UUID | FK → users(id), NOT NULL | 所属用户 |
 | name | VARCHAR(200) | NOT NULL | 店名 |
 | address | TEXT | | 地址 |
-| cuisine_type | VARCHAR(100) | | 菜系 |
 | description | TEXT | | 备注 |
-| avg_rating | NUMERIC(2,1) | CHECK 0-5 | 综合评分 |
+| recommend_rating | SMALLINT | CHECK 1-5 | 推荐度（我的主观总评） |
+| value_rating | SMALLINT | CHECK 1-5 | 性价比 |
+| ambience_rating | SMALLINT | CHECK 1-5 | 环境 |
+| service_rating | SMALLINT | CHECK 1-5 | 服务 |
 | images | JSONB | | 环境照片 |
 | lat | DOUBLE PRECISION | | 纬度 |
 | lng | DOUBLE PRECISION | | 经度 |
 | created_at | TIMESTAMPTZ | | |
 | updated_at | TIMESTAMPTZ | | |
+
+> 四个评分字段均为可空（NULL = 未评分），界面用 1-5 星展示。
+>
+> 标签不再存于 `restaurants` 表，由 `restaurant_tag_categories` / `restaurant_tags` / `restaurant_tag_links` 承载，详见 [标签体系](./tags.md)。
+>
+> **历史变更**（`004_shop_tags.sql`）：删除了 `cuisine_type`（改由「品类 / 菜系」标签承载）与 `avg_rating`（改由 `recommend_rating` 取代，不再由菜品评分自动重算）。
 
 ### 2.4 dishes — 店内菜品表
 
@@ -123,10 +200,12 @@ erDiagram
 | name | VARCHAR(200) | NOT NULL | 菜名 |
 | description | TEXT | | 口味描述 |
 | price | NUMERIC(10,2) | | 价格 |
-| rating | SMALLINT | CHECK 1-5 | 评分 |
+| rating | SMALLINT | CHECK 1-5 | 推荐度（界面文案） |
 | images | JSONB | | 照片 |
 | eaten_at | DATE | | 就餐日期 |
 | created_at | TIMESTAMPTZ | | |
+
+> `rating` 沿用旧列名，语义即界面上展示的「推荐度」。菜品的标签由 `dish_tag_categories` / `dish_tags` / `dish_tag_links` 承载。
 
 ### 2.5 recipe_favorites — 菜谱收藏表
 
@@ -139,6 +218,27 @@ erDiagram
 
 - `UNIQUE(user_id, recipe_id)`：同一用户对同一菜谱只收藏一次（接口幂等）
 - 索引 `idx_recipe_favorites_user (user_id, created_at DESC)` 支持收藏列表与过滤查询
+
+### 2.6 探店标签表（餐厅 / 菜品各一套）
+
+三张表一组，结构完全同构；每组与菜谱标签体系完全隔离，由 `004_shop_tags.sql` 建立。
+
+| 表 | 说明 |
+|---|---|
+| `restaurant_tag_categories` | 餐厅标签分类（`owner_id IS NULL` = 全局预设），含 `color`、`sort_order`、`is_system` |
+| `restaurant_tags` | 餐厅标签，含 `mutex_group`（同组互斥） |
+| `restaurant_tag_links` | 餐厅 ↔ 标签（复合主键 `(restaurant_id, tag_id)`） |
+| `dish_tag_categories` | 菜品标签分类 |
+| `dish_tags` | 菜品标签 |
+| `dish_tag_links` | 菜品 ↔ 标签（复合主键 `(dish_id, tag_id)`） |
+
+约定与菜谱标签一致：
+
+- 可见性：`owner_id IS NULL`（全局预设） ∪ `owner_id = 当前用户`（私有自定义）
+- `name` 在同一 owner 下唯一：`UNIQUE NULLS NOT DISTINCT (owner_id, name)`
+- `is_system = true` 的分类/标签对所有人只读
+- 字典表带 `updated_at` 触发器；关联表无 `updated_at`
+- 外键全部 `ON DELETE CASCADE`：删餐厅/菜品/标签/分类都会自动清理关联，无需事务内手写清理
 
 ## 3. 索引策略
 
@@ -161,16 +261,31 @@ CREATE INDEX idx_tag_rules_active ON tag_rules(is_active, sort_order);
 
 -- restaurants
 CREATE INDEX idx_restaurants_user_created ON restaurants(user_id, created_at DESC);
-CREATE INDEX idx_restaurants_cuisine ON restaurants(cuisine_type);
+
+-- 探店标签
+CREATE INDEX idx_restaurant_tag_categories_owner ON restaurant_tag_categories(owner_id);
+CREATE INDEX idx_restaurant_tags_category ON restaurant_tags(category_id);
+CREATE INDEX idx_restaurant_tags_owner ON restaurant_tags(owner_id);
+CREATE INDEX idx_restaurant_tags_mutex ON restaurant_tags(mutex_group);
+CREATE INDEX idx_restaurant_tag_links_tag ON restaurant_tag_links(tag_id);
+CREATE INDEX idx_dish_tag_categories_owner ON dish_tag_categories(owner_id);
+CREATE INDEX idx_dish_tags_category ON dish_tags(category_id);
+CREATE INDEX idx_dish_tags_owner ON dish_tags(owner_id);
+CREATE INDEX idx_dish_tags_mutex ON dish_tags(mutex_group);
+CREATE INDEX idx_dish_tag_links_tag ON dish_tag_links(tag_id);
 
 -- dishes（按餐厅查询 + 按就餐日期排序）
 CREATE INDEX idx_dishes_restaurant ON dishes(restaurant_id, eaten_at DESC);
 ```
 
+> `idx_restaurants_cuisine` 已随 `cuisine_type` 列一并删除（见 `004_shop_tags.sql`）。
+> 按标签筛选实体的查询走 `EXISTS (SELECT 1 FROM <link_table> WHERE ...)`，由关联表的复合主键与 `tag_id` 索引支撑。
+
 ## 4. 关键设计说明
 
 - **JSONB 存储结构化数据**：食材、步骤、图片使用 JSONB，避免过度建表
-- **标签字典化**：标签拆到独立表，菜谱与标签按 id 关联，区分菜谱级（手选）与食材级（规则派生）；预设与用户自定义共存，详见 [标签体系](./tags.md)
+- **标签字典化**：标签拆到独立表，实体与标签按 id 关联。菜谱区分菜谱级（手选）与食材级（规则派生）；餐厅与菜品各自一套独立字典。预设与用户自定义共存，详见 [标签体系](./tags.md)
+- **标签不存 JSONB 数组**：关联表 + 复合主键能利用外键级联与存在性索引，比 JSONB 数组更易保证一致性
 - **UUID 主键**：使用 PostgreSQL 内置 `gen_random_uuid()`，避免自增主键暴露数据量
 - **软删除策略**：当前采用硬删除（DELETE），后续如需可回收再引入 deleted_at
 - **菜品与餐厅强关联**：菜品通过 restaurant_id 归属餐厅，级联删除保证数据一致

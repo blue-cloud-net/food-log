@@ -307,11 +307,19 @@ Authorization: Bearer <token>
 
 `color` 仅支持 `primary` / `success` / `warning` / `danger` / `info`。同名自定义标签/分类返回 409。
 
+> 菜谱标签与探店标签（餐厅 / 菜品）是**三套独立字典**，互不影响：菜谱用 `/tags`、`/tag-categories`；餐厅用 `/restaurant-tags`、`/restaurant-tag-categories`；菜品用 `/dish-tags`、`/dish-tag-categories`。
+
 ## 4. 餐厅模块 `/restaurants`
 
 ### 4.1 列表
 
-`GET /api/restaurants?page=1&page_size=10&keyword=&cuisine_type=&sort=created_at`
+`GET /api/restaurants?page=1&page_size=10&keyword=&tag=&sort=`
+
+| 参数 | 说明 |
+|---|---|
+| keyword | 模糊匹配店名 / 地址 |
+| tag | **餐厅标签 id**，按标签筛选 |
+| sort | `recommend`（推荐度）\| `value`（性价比）\| `ambience`（环境）\| `service`（服务）；缺省按创建时间倒序 |
 
 响应 `data`：
 ```json
@@ -321,9 +329,12 @@ Authorization: Bearer <token>
       "id": "uuid",
       "name": "老四川",
       "address": "建设路 100 号",
-      "cuisine_type": "川菜",
       "description": "味道很正宗",
-      "avg_rating": 4.5,
+      "tags": ["<餐厅标签 id>"],
+      "recommend_rating": 5,
+      "value_rating": 4,
+      "ambience_rating": 3,
+      "service_rating": 4,
       "images": ["/images/restaurant/2026/08/rest.jpg"],
       "lat": 30.5,
       "lng": 104.0,
@@ -346,18 +357,25 @@ Authorization: Bearer <token>
 {
   "name": "老四川",
   "address": "建设路 100 号",
-  "cuisine_type": "川菜",
   "description": "味道很正宗",
-  "avg_rating": 4.5,
+  "tags": ["<餐厅标签 id>"],
+  "recommend_rating": 5,
+  "value_rating": 4,
+  "ambience_rating": 3,
+  "service_rating": 4,
   "images": ["/images/restaurant/2026/08/rest.jpg"],
   "lat": 30.5,
   "lng": 104.0
 }
 ```
 
+四个评分字段均为 1-5，`0` / 缺省表示未评分（存 NULL）。`tags` 为餐厅标签 id，必须是当前用户可见的标签，否则返回 400。
+
 ### 4.3 餐厅详情（含菜品）
 
 `GET /api/restaurants/:id` 🔒
+
+可选查询参数 `dish_tag`（**菜品标签 id**），用于只返回该标签下的菜品。
 
 响应 `data`：
 ```json
@@ -365,12 +383,16 @@ Authorization: Bearer <token>
   "id": "uuid",
   "name": "老四川",
   "address": "建设路 100 号",
-  "cuisine_type": "川菜",
   "description": "味道很正宗",
-  "avg_rating": 4.5,
+  "tags": ["<餐厅标签 id>"],
+  "recommend_rating": 5,
+  "value_rating": 4,
+  "ambience_rating": 3,
+  "service_rating": 4,
   "images": [],
   "lat": 30.5,
   "lng": 104.0,
+  "dish_count": 1,
   "created_at": "2026-08-11T10:00:00Z",
   "dishes": [
     {
@@ -379,6 +401,7 @@ Authorization: Bearer <token>
       "description": "麻辣鲜香",
       "price": 68.00,
       "rating": 5,
+      "tags": ["<菜品标签 id>"],
       "images": [],
       "eaten_at": "2026-08-10",
       "created_at": "2026-08-11T10:00:00Z"
@@ -389,11 +412,32 @@ Authorization: Bearer <token>
 
 ### 4.4 更新餐厅
 
-`PUT /api/restaurants/:id` 🔒
+`PUT /api/restaurants/:id` 🔒（请求体同创建）
 
 ### 4.5 删除餐厅
 
-`DELETE /api/restaurants/:id` 🔒（级联删除其菜品）
+`DELETE /api/restaurants/:id` 🔒（级联删除其菜品与标签关联）
+
+### 4.6 餐厅标签词表
+
+`GET /api/restaurants/tags` 🔒
+
+返回**餐厅标签**分类树（全局预设 + 本人自定义），结构与菜谱标签词表一致：`TagCategory[]`。
+
+### 4.7 餐厅标签维护
+
+`/restaurant-tags`、`/restaurant-tag-categories` 🔒
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/restaurant-tags` | 新建自定义餐厅标签 |
+| PUT | `/api/restaurant-tags/:id` | 重命名/改互斥组/改排序 |
+| DELETE | `/api/restaurant-tags/:id` | 删除标签（级联解除餐厅关联） |
+| POST | `/api/restaurant-tag-categories` | 新建自定义分类 |
+| PUT | `/api/restaurant-tag-categories/:id` | 改名/改色/改排序 |
+| DELETE | `/api/restaurant-tag-categories/:id` | 删除分类（级联删除其下标签） |
+
+请求体与 `/api/tags`、`/api/tag-categories` 完全一致。
 
 ## 5. 菜品模块 `/dishes`
 
@@ -408,18 +452,40 @@ Authorization: Bearer <token>
   "description": "麻辣鲜香",
   "price": 68.00,
   "rating": 5,
+  "tags": ["<菜品标签 id>"],
   "images": ["/images/restaurant/2026/08/fish.jpg"],
   "eaten_at": "2026-08-10"
 }
 ```
 
+`rating` 为 1-5，界面上展示为**推荐度**；`0` / 缺省表示未评分（存 NULL）。`tags` 为菜品标签 id，必须是当前用户可见的标签，否则返回 400。
+
 ### 5.2 更新菜品
 
-`PUT /api/dishes/:id` 🔒
+`PUT /api/dishes/:id` 🔒（请求体同添加）
 
 ### 5.3 删除菜品
 
 `DELETE /api/dishes/:id` 🔒
+
+### 5.4 菜品标签词表
+
+`GET /api/dishes/tags` 🔒
+
+返回**菜品标签**分类树（全局预设 + 本人自定义）：`TagCategory[]`。
+
+### 5.5 菜品标签维护
+
+`/dish-tags`、`/dish-tag-categories` 🔒
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/dish-tags` | 新建自定义菜品标签 |
+| PUT | `/api/dish-tags/:id` | 重命名/改互斥组/改排序 |
+| DELETE | `/api/dish-tags/:id` | 删除标签（级联解除菜品关联） |
+| POST | `/api/dish-tag-categories` | 新建自定义分类 |
+| PUT | `/api/dish-tag-categories/:id` | 改名/改色/改排序 |
+| DELETE | `/api/dish-tag-categories/:id` | 删除分类（级联删除其下标签） |
 
 ## 6. 图片上传 `/upload`
 
@@ -458,12 +524,18 @@ Content-Type: `multipart/form-data`
 
 `GET /api/search?keyword=牛肉` 🔒
 
-聚合搜索菜谱、餐厅、菜品，各类返回前 10 条。响应 `data`：
+聚合搜索菜谱、餐厅、菜品，各类返回前 10 条。关键词会匹配：
+
+- 菜谱：菜名 / 描述（含标签名）
+- 餐厅：店名 / 地址 / **餐厅标签名**
+- 菜品：菜名 / **菜品标签名**
+
+响应 `data`：
 ```json
 {
   "recipes": [ { "id": "uuid", "name": "土豆炖牛肉", "tags": [...] } ],
-  "restaurants": [ { "id": "uuid", "name": "牛肉面馆", "cuisine_type": "面食" } ],
-  "dishes": [ { "id": "uuid", "name": "红烧牛肉", "restaurant_id": "uuid" } ]
+  "restaurants": [ { "id": "uuid", "name": "牛肉面馆", "tags": [...] } ],
+  "dishes": [ { "id": "uuid", "name": "红烧牛肉", "restaurant_id": "uuid", "tags": [...] } ]
 }
 ```
 
@@ -531,15 +603,29 @@ interface Recipe {
 
 interface Restaurant {
   id: string; name: string; address?: string;
-  cuisine_type?: string; description?: string;
-  avg_rating?: number; images: string[];
+  description?: string;
+  /** 餐厅标签 id */
+  tags: string[];
+  /** 1-5 推荐度 */
+  recommend_rating: number;
+  /** 1-5 性价比 */
+  value_rating: number;
+  /** 1-5 环境 */
+  ambience_rating: number;
+  /** 1-5 服务 */
+  service_rating: number;
+  images: string[];
   lat?: number; lng?: number;
   dish_count?: number; created_at: string;
 }
 
 interface Dish {
   id: string; restaurant_id: string; name: string;
-  description?: string; price?: number; rating?: number;
+  description?: string; price?: number;
+  /** 1-5（界面展示为「推荐度」） */
+  rating?: number;
+  /** 菜品标签 id */
+  tags: string[];
   images: string[]; eaten_at?: string; created_at: string;
 }
 ```

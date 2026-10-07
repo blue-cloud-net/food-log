@@ -89,10 +89,10 @@ graph TB
 ```
 client/src/
 ├── router/       # 路由配置 + 登录守卫
-├── stores/       # Pinia 状态（auth / recipe / restaurant）
+├── stores/       # Pinia 状态（auth / tags 菜谱标签 / shopTags 探店标签）
 ├── api/          # Axios 封装 + 各模块 API
 ├── views/        # 页面组件
-├── components/   # 布局 + 业务 + 通用组件
+├── components/   # 布局 + 业务 + 通用组件（common/TagSelector 为三套字典共用）
 └── utils/        # 工具函数
 ```
 
@@ -111,7 +111,8 @@ client/src/
 | `/restaurants/new` | 新建餐厅 | ✓ |
 | `/restaurants/:id` | 餐厅详情 | ✓ |
 | `/restaurants/:id/edit` | 编辑餐厅 | ✓ |
-| `/restaurants/:id/dishes/new` | 添加菜品 | ✓ |
+| `/tags` | 标签管理（菜谱 / 餐厅 / 菜品分区） | ✓ |
+| `/search` | 全局搜索结果 | ✓ |
 | `/profile` | 个人中心 | ✓ |
 
 ### 5.2 响应式布局
@@ -123,8 +124,11 @@ client/src/
 ### 5.3 状态管理
 
 - `useAuthStore`：token、用户信息、登录/登出
-- `useRecipeStore`：菜谱列表、当前菜谱、分页状态
-- `useRestaurantStore`：餐厅列表、当前餐厅、菜品列表
+- `useTagsStore`：菜谱标签词表（`id → 名称/颜色/互斥组` 索引，`ensureLoaded` 幂等预热）
+- `useShopTagsStore`：探店标签词表，餐厅与菜品两份独立字典，getter 均需传入 `domain`
+
+> 标签只以 **id 数组**存在于各实体上，显示名与颜色由上述 store 统一解析，避免后端返回冗余文本。
+> `components/common/TagSelector.vue` 通过 `domain` prop（`recipe` / `restaurant` / `dish`）选择对应 store 与创建接口，三套字典共用一个组件。
 
 ## 6. 认证流程
 
@@ -186,6 +190,16 @@ graph TD
 - **服务**（`internal/service/tag_service.go`）：词表读取（30s 进程内缓存 + 写入失效）、`ComputeIngredientTags`（去重与互斥组剔除）、`RecognizeTagNames`（名称→id，未收录则建自定义标签）、自定义分类/标签 CRUD
 - **存储**：菜谱级手选标签写入 `recipe_tags`，食材级自动标签写入 `recipe_ingredient_tags`，两者分开
 - **词表接口** `GET /api/recipes/tags` 供前端选择器与 id→显示名解析使用；管理接口见 `/api/tags`、`/api/tag-categories`
+
+### 探店标签（无自动规则）
+
+餐厅与菜品各有一套**独立字典**（`restaurant_tag_*` / `dish_tag_*`，见 `004_shop_tags.sql`、`005_shop_tag_catalog.sql`），与菜谱标签完全隔离：
+
+- 服务：`internal/service/shop_tag_service.go`；数据访问：`internal/repository/shop_tag_repo.go`（用 `ShopTagDomain` + 表名白名单区分两个域，表名无法参数化故用白名单防注入）
+- **没有** `tag_rules` 等价物，也**不接 AI 兜底**，标签完全由用户手选（预设词表 + 自定义）
+- 实体写入与标签关联在**同一事务**内完成（`ReplaceTagsTx`），避免半成品数据
+- 筛选：餐厅列表 `?tag=`、餐厅详情菜品 `?dish_tag=`；全局搜索会命中餐厅/菜品标签名
+- 餐厅评分维度（推荐度 / 性价比 / 环境 / 服务，均为 1-5）是**普通列**，不是标签；旧 `avg_rating` 与 `cuisine_type` 已删除
 
 ### AI Provider 架构
 
@@ -265,14 +279,14 @@ food-log/
 │   │   ├── storage/         # 数据目录布局与中转清理
 │   │   ├── web/             # 内嵌前端产物 + SPA 服务
 │   │   ├── model/           # 数据模型
-│   │   ├── repository/      # 数据访问
-│   │   ├── service/         # 业务逻辑（含图片上传处理）
+│   │   ├── repository/      # 数据访问（tag_repo 菜谱标签 / shop_tag_repo 探店标签）
+│   │   ├── service/         # 业务逻辑（含图片上传处理、tag_service / shop_tag_service）
 │   │   ├── handler/         # HTTP 处理器
 │   │   ├── middleware/      # 中间件
-│   │   ├── tagging/         # 自动标签（词典 + 核心逻辑）
+│   │   ├── tagging/         # 自动标签规则求值（词表在数据库，此处仅纯函数）
 │   │   ├── ai/              # AI Provider（接口 + OpenAI/Ollama 实现）
 │   │   └── router/          # 路由
-│   └── migrations/          # SQL 迁移（embed，启动时执行）
+│   └── migrations/          # SQL 迁移（embed，启动时按文件名升序执行并记账）
 └── client/                  # Vue 前端
     ├── Dockerfile.dev       # 开发镜像（Vite dev server）
     ├── public/              # 静态资源 + PWA 图标
