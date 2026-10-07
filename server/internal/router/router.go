@@ -20,8 +20,11 @@ func Setup(cfg *config.Config, pool *pgxpool.Pool) *gin.Engine {
 	r.Use(middleware.Logger())
 	r.Use(middleware.CORS(cfg.ClientOrigin))
 
-	// 静态文件（上传的图片）
-	r.Static("/uploads", cfg.UploadDir)
+	// 大图上传：超过该阈值的内存占用转存磁盘（默认 32MB）
+	r.MaxMultipartMemory = 8 << 20
+
+	// 静态文件（上传的图片：/images/{recipe,restaurant}/YYYY/MM/xxx.jpg）
+	r.Static("/images", cfg.ImagesRoot())
 
 	// 初始化依赖
 	userRepo := repository.NewUserRepo(pool)
@@ -43,7 +46,7 @@ func Setup(cfg *config.Config, pool *pgxpool.Pool) *gin.Engine {
 	tagService := service.NewTagService(tagRepo, aiProvider)
 	recipeService := service.NewRecipeService(pool, recipeRepo, favoriteRepo, tagRepo, tagService)
 	restaurantService := service.NewRestaurantService(restaurantRepo, dishRepo)
-	uploadService := service.NewUploadService(cfg.UploadDir)
+	uploadService := service.NewUploadService(cfg)
 	searchService := service.NewSearchService(recipeRepo, restaurantRepo, dishRepo)
 	exportService := service.NewExportService(pool, recipeRepo, restaurantRepo, dishRepo, favoriteRepo, tagRepo, tagService)
 

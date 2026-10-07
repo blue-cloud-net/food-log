@@ -157,7 +157,7 @@ function addIngredient() {
 
 async function customUpload(options: UploadRequestOptions) {
   try {
-    const res = await uploadImages([options.file])
+    const res = await uploadImages([options.file], 'recipe')
     const file = res.files[0]
     form.images.push(file.url)
     options.onSuccess(res)

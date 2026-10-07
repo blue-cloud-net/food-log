@@ -81,7 +81,7 @@ onMounted(async () => {
 
 async function customUpload(options: UploadRequestOptions) {
   try {
-    const res = await uploadImages([options.file])
+    const res = await uploadImages([options.file], 'restaurant')
     form.images.push(res.files[0].url)
     options.onSuccess(res)
   } catch (e) {

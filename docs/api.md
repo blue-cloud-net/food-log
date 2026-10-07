@@ -116,7 +116,7 @@ Authorization: Bearer <token>
   "username": "新名字",
   "email": "new@example.com",
   "password": "新密码(可选)",
-  "avatar_url": "/uploads/avatar.jpg"
+  "avatar_url": "https://example.com/avatar.jpg"
 }
 ```
 
@@ -152,7 +152,7 @@ Authorization: Bearer <token>
       "rating": 5,
       "tags": ["<标签 id>"],
       "ingredient_tags": ["<标签 id>"],
-      "images": ["/uploads/2026/08/xxx.jpg", "/uploads/2026/08/xxx_thumb.jpg"],
+      "images": ["/images/recipe/2026/08/xxx.jpg", "/images/recipe/2026/08/xxx_thumb.jpg"],
       "is_favorited": true,
       "created_at": "2026-08-11T10:00:00Z",
       "updated_at": "2026-08-11T10:00:00Z"
@@ -182,7 +182,7 @@ Authorization: Bearer <token>
   "difficulty": "medium",
   "rating": 5,
   "tags": ["<标签 id>"],
-  "images": ["/uploads/2026/08/xxx.jpg"]
+  "images": ["/images/recipe/2026/08/xxx.jpg"]
 }
 ```
 
@@ -264,7 +264,7 @@ Authorization: Bearer <token>
 
 请求：
 ```json
-{ "image_url": "/uploads/2026/08/xxx.jpg" }
+{ "image_url": "/images/recipe/2026/08/xxx.jpg" }
 ```
 
 `image_url` 支持相对路径（自动拼接请求 Host）或完整 URL。可选请求头 `X-AI-Key` 覆盖后端配置的 API Key（OpenAI 兼容提供者）。
@@ -324,7 +324,7 @@ Authorization: Bearer <token>
       "cuisine_type": "川菜",
       "description": "味道很正宗",
       "avg_rating": 4.5,
-      "images": ["/uploads/2026/08/rest.jpg"],
+      "images": ["/images/restaurant/2026/08/rest.jpg"],
       "lat": 30.5,
       "lng": 104.0,
       "dish_count": 6,
@@ -349,7 +349,7 @@ Authorization: Bearer <token>
   "cuisine_type": "川菜",
   "description": "味道很正宗",
   "avg_rating": 4.5,
-  "images": ["/uploads/2026/08/rest.jpg"],
+  "images": ["/images/restaurant/2026/08/rest.jpg"],
   "lat": 30.5,
   "lng": 104.0
 }
@@ -408,7 +408,7 @@ Authorization: Bearer <token>
   "description": "麻辣鲜香",
   "price": 68.00,
   "rating": 5,
-  "images": ["/uploads/2026/08/fish.jpg"],
+  "images": ["/images/restaurant/2026/08/fish.jpg"],
   "eaten_at": "2026-08-10"
 }
 ```
@@ -430,15 +430,18 @@ Content-Type: `multipart/form-data`
 
 | 字段 | 说明 |
 |---|---|
-| images | 文件数组，支持 jpg/png/webp/gif，单文件 ≤20MB |
+| images | 文件数组，支持 jpg/png/webp/gif，单文件 ≤20MB，一次最多 9 张 |
+| type | 图片用途：`recipe`（菜谱，默认）\| `restaurant`（餐厅与菜品）；其它取值返回 400 |
+
+图片按用途与日期落盘：`{DATA_DIR}/images/{type}/YYYY/MM/<uuid>.jpg`，同时生成 `_thumb.jpg` 缩略图。
 
 响应 `data`：
 ```json
 {
   "files": [
     {
-      "url": "/uploads/2026/08/uuid.jpg",
-      "thumb_url": "/uploads/2026/08/uuid_thumb.jpg"
+      "url": "/images/recipe/2026/08/uuid.jpg",
+      "thumb_url": "/images/recipe/2026/08/uuid_thumb.jpg"
     }
   ]
 }
@@ -446,7 +449,8 @@ Content-Type: `multipart/form-data`
 
 ### 6.2 图片访问
 
-上传后的图片通过静态服务直接访问：`GET /uploads/2026/08/uuid.jpg`（无需认证，浏览器可直接展示）。
+上传后的图片通过静态服务直接访问：`GET /images/recipe/2026/08/uuid.jpg`（无需认证，浏览器可直接展示）。
+路径不存在时返回 404，不回退到前端页面。
 
 ## 7. 全局搜索 `/search`
 

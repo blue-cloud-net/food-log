@@ -207,7 +207,7 @@ func (h *RecipeHandler) Recognize(c *gin.Context) {
 	httpx.RespondOK(c, rec)
 }
 
-// absoluteURL 将相对路径（如 /uploads/xx.jpg）拼成完整 URL，便于 AI 服务拉取
+// absoluteURL 将相对路径（如 /images/recipe/2026/01/xx.jpg）拼成完整 URL，便于 AI 服务拉取
 func absoluteURL(c *gin.Context, u string) string {
 	if strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://") {
 		return u

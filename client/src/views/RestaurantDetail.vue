@@ -162,7 +162,8 @@ function openEdit(d: Dish) {
 
 async function uploadDishImage(options: UploadRequestOptions) {
   try {
-    const res = await uploadImages([options.file])
+    // 菜品图属于餐厅探店场景，归入 restaurant 目录
+    const res = await uploadImages([options.file], 'restaurant')
     dishForm.images.push(res.files[0].url)
     options.onSuccess(res)
   } catch (e) {
