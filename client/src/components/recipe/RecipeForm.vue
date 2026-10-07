@@ -128,7 +128,7 @@ import { createRecipe, updateRecipe } from '@/api/recipe'
 import { recognizeImage } from '@/api/ai'
 import { uploadImages } from '@/api/upload'
 import { useTagsStore } from '@/stores/tags'
-import TagSelector from './TagSelector.vue'
+import TagSelector from '@/components/common/TagSelector.vue'
 
 const props = defineProps<{ recipe?: Recipe | null }>()
 const emit = defineEmits<{ (e: 'saved'): void }>()
