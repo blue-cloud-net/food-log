@@ -70,7 +70,7 @@ fi
 echo ""
 echo " 前端: http://localhost:${CLIENT_PORT}   (Vite HMR)"
 echo " 后端: http://localhost:${SERVER_PORT}   (air 热重载)"
-echo " 文档: 默认账号 admin / admin（演示数据）"
+echo " 默认账号: admin / admin（演示数据）"
 echo ""
 echo " 查看日志: docker compose -f docker-compose.dev.yml logs -f server client"
 echo " 停止环境: bash scripts/start-dev.sh --stop"
