@@ -24,6 +24,9 @@ const routes = [
       { path: 'inventory/locations', name: 'inventory-locations', component: () => import('@/views/StorageLocationSettings.vue') },
       { path: 'inventory/:id/edit', name: 'inventory-edit', component: () => import('@/views/InventoryEdit.vue') },
       { path: 'tags', name: 'tags', component: () => import('@/views/TagSettings.vue') },
+      { path: 'settings', name: 'settings', component: () => import('@/views/Settings.vue') },
+      { path: 'settings/ai', name: 'settings-ai', component: () => import('@/views/SettingsAi.vue') },
+      { path: 'settings/backup', name: 'settings-backup', component: () => import('@/views/SettingsBackup.vue') },
       { path: 'profile', name: 'profile', component: () => import('@/views/Profile.vue') }
     ]
   }
