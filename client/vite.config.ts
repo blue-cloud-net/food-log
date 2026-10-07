@@ -33,8 +33,9 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': { target: 'http://localhost:8080', changeOrigin: true },
-      '/uploads': { target: 'http://localhost:8080', changeOrigin: true }
+      // 可通过 VITE_PROXY_TARGET 指向其它后端（默认本地 8080）
+      '/api': { target: process.env.VITE_PROXY_TARGET || 'http://localhost:8080', changeOrigin: true },
+      '/uploads': { target: process.env.VITE_PROXY_TARGET || 'http://localhost:8080', changeOrigin: true }
     }
   }
 })
