@@ -18,7 +18,7 @@ var ErrNoAPIKey = errors.New("未配置 AI API Key")
 
 // OpenAICompat OpenAI 兼容协议实现（覆盖 OpenAI/DeepSeek/通义/智谱 等）
 type OpenAICompat struct {
-	baseURL    string        // 如 https://api.openai.com/v1
+	baseURL    string // 如 https://api.openai.com/v1
 	apiKey     string
 	model      string
 	timeout    time.Duration

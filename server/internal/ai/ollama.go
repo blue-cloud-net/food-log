@@ -18,7 +18,7 @@ const MaxImageBytes = 20 << 20
 
 // Ollama 本地 Ollama 实现（/api/chat，支持 llava/qwen2.5-vl 等视觉模型）
 type Ollama struct {
-	baseURL    string        // 如 http://localhost:11434
+	baseURL    string // 如 http://localhost:11434
 	model      string
 	timeout    time.Duration
 	httpClient *http.Client
@@ -47,8 +47,8 @@ func NewOllama(baseURL, model string, timeout time.Duration) *Ollama {
 func (p *Ollama) Name() string { return "ollama" }
 
 type ollamaMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role    string   `json:"role"`
+	Content string   `json:"content"`
 	Images  []string `json:"images,omitempty"` // base64 图片
 }
 
