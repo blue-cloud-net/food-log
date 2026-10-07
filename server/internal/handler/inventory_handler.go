@@ -52,7 +52,7 @@ func (h *InventoryHandler) Get(c *gin.Context) {
 type inventoryItemRequest struct {
 	LocationID string   `json:"location_id" binding:"required"`
 	Name       string   `json:"name" binding:"required,max=100"`
-	Amount     string   `json:"amount"`
+	Quantity   float64  `json:"quantity" binding:"required,gt=0"`
 	Unit       string   `json:"unit"`
 	Category   string   `json:"category"`
 	ExpireAt   string   `json:"expire_at"`
@@ -65,7 +65,7 @@ func (r *inventoryItemRequest) toModel() *model.InventoryItem {
 	it := &model.InventoryItem{
 		LocationID: r.LocationID,
 		Name:       r.Name,
-		Amount:     r.Amount,
+		Quantity:   r.Quantity,
 		Unit:       r.Unit,
 		Category:   r.Category,
 		Note:       r.Note,

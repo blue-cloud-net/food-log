@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -13,6 +14,19 @@ import (
 
 // ErrInventoryInvalid 库存条目参数无效
 var ErrInventoryInvalid = errors.New("库存食材参数无效")
+
+// maxBatchDeleteInventory 单次批量删除的条目上限
+const maxBatchDeleteInventory = 200
+
+// maxInventoryQuantity 单个条目允许的最大数量（与 NUMERIC(10,2) 量级匹配）
+const maxInventoryQuantity = 99999999
+
+// ConsumeResult 消耗结果
+type ConsumeResult struct {
+	Remaining float64              // 剩余数量（已移出时为 0）
+	Removed   bool                 // 是否已减到 0 并移出库存
+	Item      *model.InventoryItem // 剩余条目（已移出时为 nil）
+}
 
 // InventoryService 库存食材服务
 type InventoryService struct {
@@ -87,7 +101,13 @@ func (s *InventoryService) prepare(ctx context.Context, userID string, it *model
 	if it.Name == "" || len([]rune(it.Name)) > 100 {
 		return fmt.Errorf("%w: 食材名称长度需为 1-100", ErrInventoryInvalid)
 	}
-	it.Amount = strings.TrimSpace(it.Amount)
+	it.Quantity = math.Round(it.Quantity*100) / 100
+	if it.Quantity <= 0 {
+		return fmt.Errorf("%w: 数量需大于 0", ErrInventoryInvalid)
+	}
+	if it.Quantity > maxInventoryQuantity {
+		return fmt.Errorf("%w: 数量过大", ErrInventoryInvalid)
+	}
 	it.Unit = strings.TrimSpace(it.Unit)
 	it.Category = strings.TrimSpace(it.Category)
 	it.Note = strings.TrimSpace(it.Note)

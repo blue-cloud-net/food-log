@@ -28,7 +28,7 @@ type InventoryItem struct {
 	UserID     string    `json:"user_id"`
 	LocationID string    `json:"location_id"`
 	Name       string    `json:"name"`
-	Amount     string    `json:"amount"`
+	Quantity   float64   `json:"quantity"` // 数量（> 0），单位见 Unit
 	Unit       string    `json:"unit"`
 	Category   string    `json:"category"`  // 食材分类（自由文本，前端给预设建议）
 	ExpireAt   *string   `json:"expire_at"` // 过期日期（YYYY-MM-DD，nil = 未设置）

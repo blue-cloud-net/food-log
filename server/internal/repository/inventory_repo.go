@@ -24,7 +24,7 @@ func NewInventoryRepo(pool *pgxpool.Pool) *InventoryRepo {
 }
 
 // inventoryCols 带 i. 前缀，因此 INSERT / UPDATE ... RETURNING 需写成 `inventory_items AS i`
-const inventoryCols = `i.id, i.user_id, i.location_id, i.name, i.amount, i.unit,
+const inventoryCols = `i.id, i.user_id, i.location_id, i.name, i.quantity, i.unit,
 	i.category, i.expire_at, i.note, i.images, i.created_at, i.updated_at`
 
 // InventoryFilter 库存列表筛选条件
@@ -40,7 +40,7 @@ func scanInventoryItem(row pgx.Row) (*model.InventoryItem, error) {
 	var it model.InventoryItem
 	var images []byte
 	var expireAt *time.Time
-	err := row.Scan(&it.ID, &it.UserID, &it.LocationID, &it.Name, &it.Amount, &it.Unit,
+	err := row.Scan(&it.ID, &it.UserID, &it.LocationID, &it.Name, &it.Quantity, &it.Unit,
 		&it.Category, &expireAt, &it.Note, &images, &it.CreatedAt, &it.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
@@ -121,10 +121,10 @@ func (r *InventoryRepo) GetByID(ctx context.Context, id string) (*model.Inventor
 // Create 创建库存条目
 func (r *InventoryRepo) Create(ctx context.Context, it *model.InventoryItem) error {
 	row := r.pool.QueryRow(ctx,
-		`INSERT INTO inventory_items AS i (user_id, location_id, name, amount, unit, category, expire_at, note, images)
+		`INSERT INTO inventory_items AS i (user_id, location_id, name, quantity, unit, category, expire_at, note, images)
 		 VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9)
 		 RETURNING `+inventoryCols,
-		it.UserID, it.LocationID, it.Name, it.Amount, it.Unit, it.Category,
+		it.UserID, it.LocationID, it.Name, it.Quantity, it.Unit, it.Category,
 		nullableString(it.ExpireAt), it.Note, marshalArray(it.Images))
 	return scanInventoryItemRow(row, it)
 }
@@ -133,10 +133,10 @@ func (r *InventoryRepo) Create(ctx context.Context, it *model.InventoryItem) err
 func (r *InventoryRepo) Update(ctx context.Context, it *model.InventoryItem) error {
 	row := r.pool.QueryRow(ctx,
 		`UPDATE inventory_items AS i SET
-		   location_id=$2::uuid, name=$3, amount=$4, unit=$5, category=$6,
+		   location_id=$2::uuid, name=$3, quantity=$4, unit=$5, category=$6,
 		   expire_at=$7, note=$8, images=$9, updated_at=now()
 		 WHERE i.id=$1::uuid RETURNING `+inventoryCols,
-		it.ID, it.LocationID, it.Name, it.Amount, it.Unit, it.Category,
+		it.ID, it.LocationID, it.Name, it.Quantity, it.Unit, it.Category,
 		nullableString(it.ExpireAt), it.Note, marshalArray(it.Images))
 	return scanInventoryItemRow(row, it)
 }
