@@ -24,6 +24,7 @@
           </span>
           <template #dropdown>
             <el-dropdown-menu>
+              <el-dropdown-item @click="router.push('/tags')">标签管理</el-dropdown-item>
               <el-dropdown-item @click="router.push('/profile')">个人中心</el-dropdown-item>
               <el-dropdown-item divided @click="logout">退出登录</el-dropdown-item>
             </el-dropdown-menu>
