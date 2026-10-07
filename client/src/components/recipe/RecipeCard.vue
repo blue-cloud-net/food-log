@@ -18,6 +18,9 @@
       <div v-if="recipe.is_favorited" class="absolute top-2 right-2 bg-white/90 rounded-full w-6.5 h-6.5 flex items-center justify-center">
         <el-icon color="#ff6b35"><StarFilled /></el-icon>
       </div>
+      <div v-if="recipe.made_at" class="absolute top-2 left-2 bg-white/90 rounded-full px-2 h-6.5 flex items-center text-[11px] font-medium text-[#67c23a]">
+        已做
+      </div>
     </div>
 
     <div class="px-3 pt-2.5 pb-3">
@@ -34,6 +37,7 @@
         >
           {{ difficultyText(recipe.difficulty) }}
         </el-tag>
+        <el-tag v-if="recipe.is_liked" type="danger" size="small" effect="light">喜欢</el-tag>
         <RatingStars v-if="recipe.rating" :model-value="recipe.rating" disabled />
       </div>
       <div v-if="recipe.tags.length" class="flex flex-wrap gap-1.5">

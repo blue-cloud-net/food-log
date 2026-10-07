@@ -44,6 +44,13 @@
           </div>
         </div>
         <div class="mt-3 flex gap-2 flex-wrap">
+          <el-button
+            :type="restaurant.is_visited ? 'success' : 'warning'"
+            :plain="!restaurant.is_visited"
+            @click="toggleVisited"
+          >
+            {{ restaurant.is_visited ? '✅ 已探店' : '📍 未探店' }}
+          </el-button>
           <el-button type="primary" @click="openAdd">
             <el-icon><Plus /></el-icon>&nbsp;添加菜品
           </el-button>
@@ -117,6 +124,9 @@
               </div>
             </div>
             <div class="flex shrink-0">
+              <el-button text size="small" @click="toggleDishLike(d)">
+                {{ d.is_liked ? '❤️' : '🤍' }}
+              </el-button>
               <el-button text size="small" @click="openEdit(d)">
                 <el-icon><Edit /></el-icon>
               </el-button>
@@ -169,6 +179,9 @@
       <el-form-item label="推荐度">
         <el-rate v-model="dishForm.rating" />
       </el-form-item>
+      <el-form-item label="喜欢">
+        <el-switch v-model="dishForm.is_liked" />
+      </el-form-item>
       <el-form-item label="菜品标签（口味 / 份量 / 特色，可自定义）">
         <TagSelector v-model="dishForm.tags" domain="dish" />
       </el-form-item>
@@ -205,7 +218,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadRequestOptions } from 'element-plus'
-import { addDish, deleteDish, deleteRestaurant, getRestaurant, updateDish } from '@/api/restaurant'
+import { addDish, deleteDish, deleteRestaurant, getRestaurant, setDishLiked, setRestaurantVisited, updateDish } from '@/api/restaurant'
 import { uploadImages } from '@/api/upload'
 import type { Dish, RestaurantDetail } from '@/api/types'
 import TagSelector from '@/components/common/TagSelector.vue'
@@ -241,6 +254,7 @@ const emptyDish = () => ({
   price: null as number | null,
   rating: 0,
   eaten_at: null as string | null,
+  is_liked: false,
   tags: [] as string[],
   images: [] as string[]
 })
@@ -272,6 +286,7 @@ function openEdit(d: Dish) {
     price: d.price,
     rating: d.rating,
     eaten_at: d.eaten_at,
+    is_liked: d.is_liked,
     tags: [...(d.tags || [])],
     images: [...(d.images || [])]
   })
@@ -301,6 +316,7 @@ async function saveDish() {
       price: dishForm.price,
       rating: dishForm.rating,
       eaten_at: dishForm.eaten_at,
+      is_liked: dishForm.is_liked,
       tags: dishForm.tags,
       images: dishForm.images
     }
@@ -338,6 +354,20 @@ async function remove() {
   await deleteRestaurant(restaurant.value.id)
   ElMessage.success('已删除')
   router.push('/restaurants')
+}
+
+async function toggleVisited() {
+  if (!restaurant.value) return
+  const next = !restaurant.value.is_visited
+  await setRestaurantVisited(restaurant.value.id, next)
+  restaurant.value.is_visited = next
+  ElMessage.success(next ? '已标记为已探店' : '已标记为未探店')
+}
+
+async function toggleDishLike(d: Dish) {
+  const next = !d.is_liked
+  await setDishLiked(d.id, next)
+  d.is_liked = next
 }
 
 onMounted(() => {

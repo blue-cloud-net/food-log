@@ -27,6 +27,10 @@ export interface Recipe {
   /** 食材级标签 id（服务端按规则自动派生，只读） */
   ingredient_tags: string[]
   images: string[]
+  /** 做过日期 YYYY-MM-DD（null = 未做） */
+  made_at: string | null
+  /** 喜欢（独立于收藏） */
+  is_liked: boolean
   is_favorited: boolean
   created_at: string
   updated_at: string
@@ -58,6 +62,8 @@ export interface Restaurant {
   images: string[]
   lat: number | null
   lng: number | null
+  /** 是否已探店（false = 未探店） */
+  is_visited: boolean
   dish_count: number
   created_at: string
   updated_at: string
@@ -76,6 +82,10 @@ export interface Dish {
   tags: string[]
   images: string[]
   eaten_at: string | null
+  /** 喜欢该菜品 */
+  is_liked: boolean
+  /** 列表场景下所属餐厅名 */
+  restaurant_name?: string
   created_at: string
 }
 

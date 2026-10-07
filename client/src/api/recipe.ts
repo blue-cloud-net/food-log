@@ -12,6 +12,10 @@ export interface RecipeQuery {
   ingredient_tag?: string
   sort?: string
   favorite?: boolean
+  /** 已做/未做：'true' 只看已做，'false' 只看未做，不传为全部 */
+  made?: 'true' | 'false'
+  /** 只看喜欢（独立于收藏） */
+  liked?: boolean
 }
 
 export function listRecipes(params: RecipeQuery = {}) {
@@ -48,4 +52,14 @@ export function favoriteRecipe(id: string) {
 
 export function unfavoriteRecipe(id: string) {
   return http.delete(`/recipes/${id}/favorite`) as Promise<{ favorited: boolean }>
+}
+
+/** 标记「做过日期」；madeAt 为 null 表示取消已做 */
+export function setRecipeMade(id: string, madeAt: string | null) {
+  return http.put(`/recipes/${id}/made`, { made_at: madeAt }) as Promise<{ made_at: string | null }>
+}
+
+/** 标记「喜欢」（独立于收藏） */
+export function setRecipeLiked(id: string, liked: boolean) {
+  return http.put(`/recipes/${id}/like`, { liked }) as Promise<{ is_liked: boolean }>
 }

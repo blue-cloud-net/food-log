@@ -55,29 +55,51 @@
           <span>{{ timeAgo(recipe.created_at) }}</span>
         </div>
 
-        <div class="flex items-center justify-between flex-wrap gap-2.5 border-t border-dashed border-[#f0f0f0] pt-3.5">
+        <div class="flex items-center gap-4 flex-wrap border-t border-dashed border-[#f0f0f0] pt-3.5">
           <div class="flex items-center gap-2">
             <span class="text-[13px] text-[#606266]">我的评分</span>
             <el-rate v-model="ratingDraft" @change="saveRating" />
           </div>
-          <div class="flex gap-2">
-            <el-button
-              :type="recipe.is_favorited ? 'warning' : 'default'"
-              @click="toggleFavorite"
-            >
-              <el-icon>
-                <StarFilled v-if="recipe.is_favorited" />
-                <Star v-else />
-              </el-icon>
-              &nbsp;{{ recipe.is_favorited ? '已收藏' : '收藏' }}
-            </el-button>
-            <el-button @click="router.push(`/recipes/${recipe.id}/edit`)">
-              <el-icon><Edit /></el-icon>&nbsp;编辑
-            </el-button>
-            <el-button type="danger" plain @click="remove">
-              <el-icon><Delete /></el-icon>&nbsp;删除
-            </el-button>
+          <div class="flex items-center gap-2">
+            <span class="text-[13px] text-[#606266]">做过日期</span>
+            <el-date-picker
+              v-model="madeDraft"
+              type="date"
+              value-format="YYYY-MM-DD"
+              placeholder="未做"
+              clearable
+              size="small"
+              style="width: 150px"
+              @change="saveMade"
+            />
           </div>
+          <el-button
+            size="small"
+            :type="recipe.is_liked ? 'danger' : 'default'"
+            :plain="recipe.is_liked"
+            @click="toggleLiked"
+          >
+            {{ recipe.is_liked ? '❤️ 已喜欢' : '🤍 喜欢' }}
+          </el-button>
+        </div>
+
+        <div class="flex items-center justify-end flex-wrap gap-2.5 mt-3">
+          <el-button
+            :type="recipe.is_favorited ? 'warning' : 'default'"
+            @click="toggleFavorite"
+          >
+            <el-icon>
+              <StarFilled v-if="recipe.is_favorited" />
+              <Star v-else />
+            </el-icon>
+            &nbsp;{{ recipe.is_favorited ? '已收藏' : '收藏' }}
+          </el-button>
+          <el-button @click="router.push(`/recipes/${recipe.id}/edit`)">
+            <el-icon><Edit /></el-icon>&nbsp;编辑
+          </el-button>
+          <el-button type="danger" plain @click="remove">
+            <el-icon><Delete /></el-icon>&nbsp;删除
+          </el-button>
         </div>
       </div>
 
@@ -115,6 +137,8 @@ import {
   deleteRecipe,
   favoriteRecipe,
   getRecipe,
+  setRecipeLiked,
+  setRecipeMade,
   unfavoriteRecipe,
   updateRecipe
 } from '@/api/recipe'
@@ -129,6 +153,7 @@ const tagsStore = useTagsStore()
 
 const recipe = ref<Recipe | null>(null)
 const ratingDraft = ref(0)
+const madeDraft = ref<string | null>(null)
 
 async function load() {
   recipe.value = await getRecipe(route.params.id as string)
@@ -139,6 +164,7 @@ async function load() {
   recipe.value.tags = recipe.value.tags || []
   recipe.value.ingredient_tags = recipe.value.ingredient_tags || []
   ratingDraft.value = recipe.value.rating
+  madeDraft.value = recipe.value.made_at
 }
 
 async function saveRating(v: number) {
@@ -160,6 +186,25 @@ async function toggleFavorite() {
     await favoriteRecipe(recipe.value.id)
     recipe.value.is_favorited = true
   }
+}
+
+async function saveMade(v: string | null) {
+  if (!recipe.value) return
+  try {
+    const res = await setRecipeMade(recipe.value.id, v || null)
+    recipe.value.made_at = res.made_at
+    ElMessage.success(res.made_at ? '已标记为已做' : '已标记为未做')
+  } catch {
+    madeDraft.value = recipe.value.made_at
+  }
+}
+
+async function toggleLiked() {
+  if (!recipe.value) return
+  const next = !recipe.value.is_liked
+  await setRecipeLiked(recipe.value.id, next)
+  recipe.value.is_liked = next
+  ElMessage.success(next ? '已喜欢' : '已取消喜欢')
 }
 
 async function remove() {

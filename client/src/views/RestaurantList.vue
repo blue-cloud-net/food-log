@@ -39,6 +39,10 @@
         <el-option label="环境" value="ambience" />
         <el-option label="服务" value="service" />
       </el-select>
+      <el-select v-model="filters.visited" placeholder="探店状态" clearable class="w-35" @change="load(1)">
+        <el-option label="已探店" value="true" />
+        <el-option label="未探店" value="false" />
+      </el-select>
       <el-button type="primary" plain @click="load(1)">查询</el-button>
     </div>
 
@@ -92,11 +96,12 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { listRestaurants } from '@/api/restaurant'
 import type { Restaurant } from '@/api/types'
 import { useShopTagsStore } from '@/stores/shopTags'
 
+const route = useRoute()
 const router = useRouter()
 const shopTagsStore = useShopTagsStore()
 
@@ -106,7 +111,15 @@ const page = ref(1)
 const pageSize = 12
 const loading = ref(false)
 
-const filters = reactive({ keyword: '', tag: '', sort: '' })
+const filters = reactive({
+  keyword: '',
+  tag: '',
+  sort: '',
+  // 支持从首页「查看全部」带参数进入
+  visited: (route.query.visited === 'true' || route.query.visited === 'false'
+    ? route.query.visited
+    : '') as '' | 'true' | 'false'
+})
 
 const tagOptions = computed(() => shopTagsStore.groupedOptions('restaurant'))
 const tagName = (id: string) => shopTagsStore.tagNameOf('restaurant', id)
@@ -120,7 +133,8 @@ async function load(p = 1) {
       page_size: pageSize,
       keyword: filters.keyword || undefined,
       tag: filters.tag || undefined,
-      sort: filters.sort || undefined
+      sort: filters.sort || undefined,
+      visited: filters.visited || undefined
     })
     list.value = res.list
     total.value = res.total

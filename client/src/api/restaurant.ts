@@ -9,6 +9,19 @@ export interface RestaurantQuery {
   tag?: string
   /** recommend | value | ambience | service */
   sort?: string
+  /** 已探店/未探店：'true' 只看已探店，'false' 只看未探店，不传为全部 */
+  visited?: 'true' | 'false'
+}
+
+export interface DishQuery {
+  page?: number
+  page_size?: number
+  keyword?: string
+  /** 菜品标签 id */
+  tag?: string
+  restaurant_id?: string
+  /** 只看喜欢 */
+  liked?: boolean
 }
 
 export function listRestaurants(params: RestaurantQuery = {}) {
@@ -44,6 +57,21 @@ export function updateDish(id: string, payload: Partial<Dish>) {
 
 export function deleteDish(id: string) {
   return http.delete(`/dishes/${id}`) as Promise<{ deleted: boolean }>
+}
+
+/** 菜品列表（跨餐厅，liked=true 只看喜欢） */
+export function listDishes(params: DishQuery = {}) {
+  return http.get('/dishes', { params }) as Promise<Paginated<Dish>>
+}
+
+/** 标记餐厅「已探店 / 未探店」 */
+export function setRestaurantVisited(id: string, visited: boolean) {
+  return http.put(`/restaurants/${id}/visited`, { visited }) as Promise<{ is_visited: boolean }>
+}
+
+/** 标记菜品「喜欢」 */
+export function setDishLiked(id: string, liked: boolean) {
+  return http.put(`/dishes/${id}/like`, { liked }) as Promise<{ is_liked: boolean }>
 }
 
 /** 餐厅标签词表（全局预设 + 本人自定义） */

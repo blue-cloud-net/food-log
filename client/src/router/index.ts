@@ -17,6 +17,7 @@ const routes = [
       { path: 'restaurants/new', name: 'restaurant-new', component: () => import('@/views/RestaurantEdit.vue') },
       { path: 'restaurants/:id', name: 'restaurant-detail', component: () => import('@/views/RestaurantDetail.vue') },
       { path: 'restaurants/:id/edit', name: 'restaurant-edit', component: () => import('@/views/RestaurantEdit.vue') },
+      { path: 'dishes', name: 'dishes', component: () => import('@/views/DishList.vue') },
       { path: 'search', name: 'search', component: () => import('@/views/SearchResults.vue') },
       { path: 'tags', name: 'tags', component: () => import('@/views/TagSettings.vue') },
       { path: 'profile', name: 'profile', component: () => import('@/views/Profile.vue') }

@@ -56,6 +56,14 @@
         <el-switch v-model="filters.favorite" />
         <span>只看收藏</span>
       </div>
+      <el-select v-model="filters.made" placeholder="做没做" clearable class="w-30 md:flex-1 md:min-w-110px">
+        <el-option label="已做" value="true" />
+        <el-option label="未做" value="false" />
+      </el-select>
+      <div class="flex items-center gap-1.5 text-[13px] text-[#606266]">
+        <el-switch v-model="filters.liked" />
+        <span>只看喜欢</span>
+      </div>
       <el-button type="primary" plain @click="load(1)">查询</el-button>
     </div>
 
@@ -79,12 +87,13 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { listRecipes, randomRecipe } from '@/api/recipe'
 import type { Recipe } from '@/api/types'
 import { useTagsStore } from '@/stores/tags'
 import RecipeCard from '@/components/recipe/RecipeCard.vue'
 
+const route = useRoute()
 const router = useRouter()
 const tagsStore = useTagsStore()
 
@@ -101,13 +110,18 @@ const filters = reactive<{
   ingredientTag: string
   sort: string
   favorite: boolean
+  made: '' | 'true' | 'false'
+  liked: boolean
 }>({
   keyword: '',
   difficulty: '',
   tag: '',
   ingredientTag: '',
   sort: '',
-  favorite: false
+  favorite: false,
+  // 支持从首页「查看全部」带参数进入
+  made: route.query.made === 'true' || route.query.made === 'false' ? route.query.made : '',
+  liked: route.query.liked === 'true'
 })
 
 async function load(p = 1) {
@@ -121,7 +135,9 @@ async function load(p = 1) {
       tag: filters.tag || undefined,
       ingredient_tag: filters.ingredientTag || undefined,
       sort: filters.sort || undefined,
-      favorite: filters.favorite || undefined
+      favorite: filters.favorite || undefined,
+      made: filters.made || undefined,
+      liked: filters.liked || undefined
     })
     list.value = res.list
     total.value = res.total
@@ -144,7 +160,7 @@ async function onRandom() {
 }
 
 watch(
-  () => [filters.difficulty, filters.tag, filters.ingredientTag, filters.sort, filters.favorite],
+  () => [filters.difficulty, filters.tag, filters.ingredientTag, filters.sort, filters.favorite, filters.made, filters.liked],
   () => load(1)
 )
 

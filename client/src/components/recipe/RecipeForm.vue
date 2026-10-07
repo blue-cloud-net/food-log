@@ -90,6 +90,26 @@
         <el-rate v-model="form.rating" :max="5" />
       </el-form-item>
 
+      <el-row :gutter="16">
+        <el-col :span="12" :xs="24">
+          <el-form-item label="做过日期">
+            <el-date-picker
+              v-model="form.made_at"
+              type="date"
+              value-format="YYYY-MM-DD"
+              placeholder="未做"
+              clearable
+              style="width: 100%"
+            />
+          </el-form-item>
+        </el-col>
+        <el-col :span="12" :xs="24">
+          <el-form-item label="喜欢">
+            <el-switch v-model="form.is_liked" />
+          </el-form-item>
+        </el-col>
+      </el-row>
+
       <el-form-item label="标签">
         <TagSelector v-model="form.tags" />
         <div v-if="recipe?.ingredient_tags?.length" class="mt-3 w-full">
@@ -145,6 +165,8 @@ const form = reactive({
   cook_time_minutes: props.recipe?.cook_time_minutes || 0,
   difficulty: (props.recipe?.difficulty as string) || '',
   rating: props.recipe?.rating || 0,
+  made_at: (props.recipe?.made_at ?? null) as string | null,
+  is_liked: props.recipe?.is_liked || false,
   tags: [...(props.recipe?.tags || [])] as string[],
   ingredients: (props.recipe?.ingredients || [{ name: '', amount: '', unit: '' }]) as Ingredient[],
   steps: (props.recipe?.steps || [{ order: 1, content: '' }]) as Step[],
