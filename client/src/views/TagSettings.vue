@@ -2,7 +2,14 @@
   <div class="page-container">
     <div class="page-header">
       <h2 class="page-title">标签管理</h2>
-      <el-button :loading="loading" @click="reload">刷新</el-button>
+      <div class="flex items-center gap-2 flex-wrap">
+        <el-radio-group v-model="scope" size="small">
+          <el-radio-button value="recipe">菜谱标签</el-radio-button>
+          <el-radio-button value="restaurant">餐厅标签</el-radio-button>
+          <el-radio-button value="dish">菜品标签</el-radio-button>
+        </el-radio-group>
+        <el-button :loading="loading" @click="reload">刷新</el-button>
+      </div>
     </div>
 
     <el-alert
@@ -10,7 +17,7 @@
       type="info"
       :closable="false"
       show-icon
-      title="全局预设标签由系统维护、只读；你可以新增自己的分类与标签，用于菜谱的手动标记。"
+      :title="scopeHint"
     />
 
     <div class="grid gap-4 md:grid-cols-2">
@@ -121,7 +128,7 @@
         <el-form-item label="分类">
           <el-select v-model="tagForm.category_id" style="width: 100%" placeholder="选择分类">
             <el-option
-              v-for="c in tagsStore.customTargetCategories"
+              v-for="c in customTargets"
               :key="c.id"
               :label="c.name"
               :value="c.id"
@@ -141,44 +148,82 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
+  createShopTag,
+  createShopTagCategory,
   createTag,
   createTagCategory,
+  deleteShopTag,
+  deleteShopTagCategory,
   deleteTag,
   deleteTagCategory,
+  updateShopTag,
+  updateShopTagCategory,
   updateTag,
-  updateTagCategory
+  updateTagCategory,
+  type ShopTagDomain
 } from '@/api/tags'
 import type { Tag, TagCategory } from '@/api/types'
+import { useShopTagsStore } from '@/stores/shopTags'
 import { useTagsStore } from '@/stores/tags'
 import { normalizeColor } from '@/utils/tags'
 
 const COLORS = ['primary', 'success', 'warning', 'danger', 'info']
 
+// 菜谱标签与探店标签是两套独立字典，此处用 scope 切换
+type Scope = 'recipe' | ShopTagDomain
+const scope = ref<Scope>('recipe')
+
 const tagsStore = useTagsStore()
+const shopTagsStore = useShopTagsStore()
+
 const saving = ref(false)
 const loading = ref(false)
 
-const myCategories = computed(() => tagsStore.categories.filter((c) => !c.is_system))
-const systemCategories = computed(() => tagsStore.categories.filter((c) => c.is_system))
-const myTags = computed(() => tagsStore.allTags.filter((t) => !t.is_system))
+const isRecipe = computed(() => scope.value === 'recipe')
+const shopDomain = computed(() => scope.value as ShopTagDomain)
+
+const scopeHint = computed(() => {
+  if (isRecipe.value) {
+    return '全局预设标签由系统维护、只读；你可以新增自己的分类与标签，用于菜谱的手动标记。'
+  }
+  const target = scope.value === 'restaurant' ? '餐厅' : '菜品'
+  return `全局预设标签由系统维护、只读；你可以新增自己的分类与标签，用于${target}的标记。探店标签与菜谱标签互不影响。`
+})
+
+const categories = computed<TagCategory[]>(() =>
+  isRecipe.value ? tagsStore.categories : shopTagsStore.categoriesOf(shopDomain.value)
+)
+const myCategories = computed(() => categories.value.filter((c) => !c.is_system))
+const systemCategories = computed(() => categories.value.filter((c) => c.is_system))
+const myTags = computed(() =>
+  categories.value.flatMap((c) => c.tags).filter((t) => !t.is_system)
+)
+const customTargets = computed(() =>
+  categories.value.filter((c) => c.tags.length > 0 || !c.is_system)
+)
 
 function categoryNameOf(id: string) {
-  return tagsStore.categoryById[id]?.name ?? '—'
+  return categories.value.find((c) => c.id === id)?.name ?? '—'
 }
 
 async function reload() {
   loading.value = true
   try {
-    await tagsStore.reload()
+    if (isRecipe.value) {
+      await tagsStore.reload()
+    } else {
+      await shopTagsStore.reload(shopDomain.value)
+    }
   } finally {
     loading.value = false
   }
 }
 
 onMounted(reload)
+watch(scope, reload)
 
 // ===== 分类 =====
 const categoryDialog = ref(false)
@@ -198,13 +243,20 @@ async function saveCategory() {
   }
   saving.value = true
   try {
-    if (categoryForm.id) {
-      await updateTagCategory(categoryForm.id, { name: categoryForm.name, color: categoryForm.color })
+    const payload = { name: categoryForm.name, color: categoryForm.color }
+    if (isRecipe.value) {
+      if (categoryForm.id) {
+        await updateTagCategory(categoryForm.id, payload)
+      } else {
+        await createTagCategory(payload)
+      }
+    } else if (categoryForm.id) {
+      await updateShopTagCategory(shopDomain.value, categoryForm.id, payload)
     } else {
-      await createTagCategory({ name: categoryForm.name, color: categoryForm.color })
+      await createShopTagCategory(shopDomain.value, payload)
     }
     categoryDialog.value = false
-    await tagsStore.reload()
+    await reload()
     ElMessage.success('已保存')
   } catch {
     /* 失败已由拦截器提示 */
@@ -216,7 +268,7 @@ async function saveCategory() {
 async function removeCategory(row: TagCategory) {
   try {
     await ElMessageBox.confirm(
-      `删除分类「${row.name}」会同时删除其下 ${row.tags.length} 个标签，并从相关菜谱中移除这些标签。确定继续？`,
+      `删除分类「${row.name}」会同时删除其下 ${row.tags.length} 个标签，并从相关记录中移除这些标签。确定继续？`,
       '删除确认',
       { type: 'warning' }
     )
@@ -224,8 +276,12 @@ async function removeCategory(row: TagCategory) {
     return
   }
   try {
-    await deleteTagCategory(row.id)
-    await tagsStore.reload()
+    if (isRecipe.value) {
+      await deleteTagCategory(row.id)
+    } else {
+      await deleteShopTagCategory(shopDomain.value, row.id)
+    }
+    await reload()
     ElMessage.success('已删除')
   } catch {
     /* 失败已由拦截器提示 */
@@ -251,17 +307,30 @@ async function saveTag() {
   }
   saving.value = true
   try {
-    if (tagForm.id) {
-      await updateTag(tagForm.id, { name: tagForm.name, mutex_group: tagForm.mutex_group })
+    if (isRecipe.value) {
+      if (tagForm.id) {
+        await updateTag(tagForm.id, { name: tagForm.name, mutex_group: tagForm.mutex_group })
+      } else {
+        await createTag({
+          name: tagForm.name,
+          category_id: tagForm.category_id || undefined,
+          mutex_group: tagForm.mutex_group || undefined
+        })
+      }
+    } else if (tagForm.id) {
+      await updateShopTag(shopDomain.value, tagForm.id, {
+        name: tagForm.name,
+        mutex_group: tagForm.mutex_group
+      })
     } else {
-      await createTag({
+      await createShopTag(shopDomain.value, {
         name: tagForm.name,
         category_id: tagForm.category_id || undefined,
         mutex_group: tagForm.mutex_group || undefined
       })
     }
     tagDialog.value = false
-    await tagsStore.reload()
+    await reload()
     ElMessage.success('已保存')
   } catch {
     /* 失败已由拦截器提示 */
@@ -272,15 +341,19 @@ async function saveTag() {
 
 async function removeTag(row: Tag) {
   try {
-    await ElMessageBox.confirm(`删除标签「${row.name}」会从相关菜谱中移除它。确定继续？`, '删除确认', {
+    await ElMessageBox.confirm(`删除标签「${row.name}」会从相关记录中移除它。确定继续？`, '删除确认', {
       type: 'warning'
     })
   } catch {
     return
   }
   try {
-    await deleteTag(row.id)
-    await tagsStore.reload()
+    if (isRecipe.value) {
+      await deleteTag(row.id)
+    } else {
+      await deleteShopTag(shopDomain.value, row.id)
+    }
+    await reload()
     ElMessage.success('已删除')
   } catch {
     /* 失败已由拦截器提示 */
