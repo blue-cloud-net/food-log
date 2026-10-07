@@ -20,32 +20,36 @@ func NewRestaurantHandler(restaurantService *service.RestaurantService) *Restaur
 }
 
 type restaurantRequest struct {
-	Name        string   `json:"name" binding:"required,max=200"`
-	Address     string   `json:"address"`
-	CuisineType string   `json:"cuisine_type"`
-	Description string   `json:"description"`
-	AvgRating   float64  `json:"avg_rating"`
-	Images      []string `json:"images"`
-	Lat         *float64 `json:"lat"`
-	Lng         *float64 `json:"lng"`
+	Name            string   `json:"name" binding:"required,max=200"`
+	Address         string   `json:"address"`
+	Description     string   `json:"description"`
+	Tags            []string `json:"tags"`
+	RecommendRating int      `json:"recommend_rating" binding:"omitempty,min=1,max=5"`
+	ValueRating     int      `json:"value_rating" binding:"omitempty,min=1,max=5"`
+	AmbienceRating  int      `json:"ambience_rating" binding:"omitempty,min=1,max=5"`
+	ServiceRating   int      `json:"service_rating" binding:"omitempty,min=1,max=5"`
+	Images          []string `json:"images"`
+	Lat             *float64 `json:"lat"`
+	Lng             *float64 `json:"lng"`
 }
 
 type dishRequest struct {
 	Name        string   `json:"name" binding:"required,max=200"`
 	Description string   `json:"description"`
 	Price       *float64 `json:"price"`
-	Rating      int      `json:"rating"`
+	Rating      int      `json:"rating" binding:"omitempty,min=1,max=5"`
+	Tags        []string `json:"tags"`
 	Images      []string `json:"images"`
 	EatenAt     *string  `json:"eaten_at"`
 }
 
-// List 餐厅列表
+// List 餐厅列表（keyword 搜店名/地址，tag 按餐厅标签 id 筛选，sort 见 repository.restaurantSortCols）
 func (h *RestaurantHandler) List(c *gin.Context) {
 	userID := httpx.GetUserID(c)
 	q := parsePageQuery(c)
 
 	list, err := h.restaurantService.List(c.Request.Context(), userID, q,
-		c.Query("keyword"), c.Query("cuisine_type"), c.Query("sort"))
+		c.Query("keyword"), c.Query("tag"), c.Query("sort"))
 	if err != nil {
 		httpx.RespondErrorWithErr(c, err)
 		return
@@ -63,14 +67,17 @@ func (h *RestaurantHandler) Create(c *gin.Context) {
 
 	userID := httpx.GetUserID(c)
 	rst := &model.Restaurant{
-		Name:        req.Name,
-		Address:     req.Address,
-		CuisineType: req.CuisineType,
-		Description: req.Description,
-		AvgRating:   req.AvgRating,
-		Images:      req.Images,
-		Lat:         req.Lat,
-		Lng:         req.Lng,
+		Name:            req.Name,
+		Address:         req.Address,
+		Description:     req.Description,
+		Tags:            req.Tags,
+		RecommendRating: req.RecommendRating,
+		ValueRating:     req.ValueRating,
+		AmbienceRating:  req.AmbienceRating,
+		ServiceRating:   req.ServiceRating,
+		Images:          req.Images,
+		Lat:             req.Lat,
+		Lng:             req.Lng,
 	}
 
 	result, err := h.restaurantService.Create(c.Request.Context(), userID, rst)
@@ -81,10 +88,10 @@ func (h *RestaurantHandler) Create(c *gin.Context) {
 	httpx.RespondOK(c, result)
 }
 
-// Get 餐厅详情（含菜品）
+// Get 餐厅详情（含菜品，dish_tag 可按菜品标签 id 过滤菜品列表）
 func (h *RestaurantHandler) Get(c *gin.Context) {
 	userID := httpx.GetUserID(c)
-	detail, err := h.restaurantService.GetDetail(c.Request.Context(), userID, c.Param("id"))
+	detail, err := h.restaurantService.GetDetail(c.Request.Context(), userID, c.Param("id"), c.Query("dish_tag"))
 	if err != nil {
 		httpx.RespondErrorWithErr(c, err)
 		return
@@ -102,14 +109,17 @@ func (h *RestaurantHandler) Update(c *gin.Context) {
 
 	userID := httpx.GetUserID(c)
 	rst := &model.Restaurant{
-		Name:        req.Name,
-		Address:     req.Address,
-		CuisineType: req.CuisineType,
-		Description: req.Description,
-		AvgRating:   req.AvgRating,
-		Images:      req.Images,
-		Lat:         req.Lat,
-		Lng:         req.Lng,
+		Name:            req.Name,
+		Address:         req.Address,
+		Description:     req.Description,
+		Tags:            req.Tags,
+		RecommendRating: req.RecommendRating,
+		ValueRating:     req.ValueRating,
+		AmbienceRating:  req.AmbienceRating,
+		ServiceRating:   req.ServiceRating,
+		Images:          req.Images,
+		Lat:             req.Lat,
+		Lng:             req.Lng,
 	}
 
 	result, err := h.restaurantService.Update(c.Request.Context(), userID, c.Param("id"), rst)
@@ -144,6 +154,7 @@ func (h *RestaurantHandler) AddDish(c *gin.Context) {
 		Description: req.Description,
 		Price:       req.Price,
 		Rating:      req.Rating,
+		Tags:        req.Tags,
 		Images:      req.Images,
 		EatenAt:     req.EatenAt,
 	}
@@ -170,6 +181,7 @@ func (h *RestaurantHandler) UpdateDish(c *gin.Context) {
 		Description: req.Description,
 		Price:       req.Price,
 		Rating:      req.Rating,
+		Tags:        req.Tags,
 		Images:      req.Images,
 		EatenAt:     req.EatenAt,
 	}
