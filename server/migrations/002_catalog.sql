@@ -1,121 +1,20 @@
 -- =============================================
--- 004_tags.sql - 菜谱标签字典化
+-- 002_catalog.sql - 初始数据（全局预设标签字典）
 --
--- 设计说明：
---   1) 标签词表由 Go 硬编码改为数据库存储，支持「全局预设 + 用户自定义」
---      - owner_id IS NULL  → 全局预设（所有用户可见）
---      - owner_id = 某用户 → 该用户私有自定义
---   2) 菜谱与标签按 id 关联，且分两套：
---      - recipe_tags             菜谱级（用户手选）
---      - recipe_ingredient_tags  食材级（自动匹配规则派生）
---   3) 不使用短英文 key：全局预设使用固定 UUID，便于 seed / 迁移 / 文档引用
---      固定 UUID 与名称的映射见 docs/tags.md
---   4) 本文件幂等，可重复执行
+-- 由原 004_tags.sql 的预设数据段整合而来。
+-- 开发 / 生产都会执行，属于系统运行必需的基础数据（不含任何演示业务数据）。
+--
+-- 依赖 001_schema.sql 建立的 tag_categories / tags / tag_rules。
+-- 所有 INSERT 使用固定 UUID + ON CONFLICT DO UPDATE，可重复执行。
+--
+-- UUID 分段约定：
+--   10000000-...NN  分类
+--   20000000-...NN  标签（01-0f 荤素，11-1e 食材，21-25 场景，31-34 时段，41-4a 菜系，51-55 口味）
+--   30000000-...NN  自动标签规则
 -- =============================================
 
--- ===== 标签分类 =====
-CREATE TABLE IF NOT EXISTS tag_categories (
-    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    owner_id   UUID REFERENCES users(id) ON DELETE CASCADE,  -- NULL = 全局预设
-    name       VARCHAR(50) NOT NULL,
-    color      VARCHAR(20) NOT NULL DEFAULT 'info',          -- el-tag 色型：primary/success/warning/danger/info
-    sort_order INT NOT NULL DEFAULT 0,
-    is_system  BOOLEAN NOT NULL DEFAULT false,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT uq_tag_categories_owner_name UNIQUE NULLS NOT DISTINCT (owner_id, name)
-);
-
-CREATE INDEX IF NOT EXISTS idx_tag_categories_owner ON tag_categories(owner_id);
-
--- ===== 标签 =====
-CREATE TABLE IF NOT EXISTS tags (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    category_id UUID NOT NULL REFERENCES tag_categories(id) ON DELETE CASCADE,
-    owner_id    UUID REFERENCES users(id) ON DELETE CASCADE, -- NULL = 全局预设
-    name        VARCHAR(50) NOT NULL,
-    mutex_group VARCHAR(32),                                 -- 同组标签互斥（如 diet：荤菜/素菜）
-    sort_order  INT NOT NULL DEFAULT 0,
-    is_active   BOOLEAN NOT NULL DEFAULT true,
-    is_system   BOOLEAN NOT NULL DEFAULT false,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT uq_tags_owner_name UNIQUE NULLS NOT DISTINCT (owner_id, name)
-);
-
-CREATE INDEX IF NOT EXISTS idx_tags_category ON tags(category_id);
-CREATE INDEX IF NOT EXISTS idx_tags_owner    ON tags(owner_id);
-CREATE INDEX IF NOT EXISTS idx_tags_mutex    ON tags(mutex_group);
-
--- ===== 菜谱 ↔ 标签（菜谱级 / 用户手选） =====
-CREATE TABLE IF NOT EXISTS recipe_tags (
-    recipe_id UUID NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
-    tag_id    UUID NOT NULL REFERENCES tags(id)    ON DELETE CASCADE,
-    PRIMARY KEY (recipe_id, tag_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_recipe_tags_tag ON recipe_tags(tag_id);
-
--- ===== 菜谱 ↔ 标签（食材级 / 自动派生） =====
-CREATE TABLE IF NOT EXISTS recipe_ingredient_tags (
-    recipe_id UUID NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
-    tag_id    UUID NOT NULL REFERENCES tags(id)    ON DELETE CASCADE,
-    PRIMARY KEY (recipe_id, tag_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_recipe_ingredient_tags_tag ON recipe_ingredient_tags(tag_id);
-
--- ===== 自动标签规则 =====
--- rule_type 取值：
---   ingredient_keyword       逐个食材名匹配 keywords（含 exclude_keywords）
---   ingredient_text_keyword  食材拼接文本匹配 keywords
---   text_keyword             按 match_field 指定文本匹配 keywords
---   cook_time_max            0 < cook_time_minutes <= max_minutes
---   group_mutex              已命中标签落在 member_tag_ids 内；同 tag_group 只取首个命中
-CREATE TABLE IF NOT EXISTS tag_rules (
-    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    owner_id         UUID REFERENCES users(id) ON DELETE CASCADE,  -- NULL = 全局预设
-    tag_id           UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
-    rule_type        VARCHAR(32) NOT NULL,
-    match_field      VARCHAR(32),
-    keywords         TEXT[] NOT NULL DEFAULT '{}',
-    exclude_keywords TEXT[] NOT NULL DEFAULT '{}',
-    max_minutes      INT,
-    tag_group        VARCHAR(32),
-    member_tag_ids   UUID[] NOT NULL DEFAULT '{}',
-    sort_order       INT NOT NULL DEFAULT 0,
-    is_active        BOOLEAN NOT NULL DEFAULT true,
-    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT ck_tag_rules_type CHECK (
-        rule_type IN ('ingredient_keyword', 'ingredient_text_keyword', 'text_keyword', 'cook_time_max', 'group_mutex')
-    ),
-    CONSTRAINT ck_tag_rules_field CHECK (
-        match_field IS NULL OR match_field IN ('name', 'description', 'name_description')
-    )
-);
-
-CREATE INDEX IF NOT EXISTS idx_tag_rules_tag    ON tag_rules(tag_id);
-CREATE INDEX IF NOT EXISTS idx_tag_rules_active ON tag_rules(is_active, sort_order);
-
--- ===== updated_at 自动更新触发器（复用 001 的 set_updated_at） =====
-DROP TRIGGER IF EXISTS trg_tag_categories_updated ON tag_categories;
-CREATE TRIGGER trg_tag_categories_updated
-    BEFORE UPDATE ON tag_categories
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
-DROP TRIGGER IF EXISTS trg_tags_updated ON tags;
-CREATE TRIGGER trg_tags_updated
-    BEFORE UPDATE ON tags
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
-DROP TRIGGER IF EXISTS trg_tag_rules_updated ON tag_rules;
-CREATE TRIGGER trg_tag_rules_updated
-    BEFORE UPDATE ON tag_rules
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
 -- =============================================
--- 全局预设分类（固定 UUID：10000000-0000-4000-8000-0000000000NN）
+-- 全局预设分类
 -- =============================================
 INSERT INTO tag_categories (id, owner_id, name, color, sort_order, is_system) VALUES
     ('10000000-0000-4000-8000-000000000001', NULL, '荤素', 'danger',  10, true),
@@ -132,8 +31,7 @@ ON CONFLICT (id) DO UPDATE SET
     is_system  = EXCLUDED.is_system;
 
 -- =============================================
--- 全局预设标签（固定 UUID：20000000-0000-4000-8000-0000000000NN）
---   NN 分段：01-0f 荤素，11-1e 食材，21-25 场景，31-34 时段，41-4a 菜系，51-55 口味
+-- 全局预设标签
 -- =============================================
 INSERT INTO tags (id, category_id, owner_id, name, mutex_group, sort_order, is_system) VALUES
     -- 荤素（互斥组 diet）
@@ -191,7 +89,7 @@ ON CONFLICT (id) DO UPDATE SET
     is_system   = EXCLUDED.is_system;
 
 -- =============================================
--- 全局预设自动标签规则（固定 UUID：30000000-0000-4000-8000-0000000000NN）
+-- 全局预设自动标签规则
 -- 求值顺序按 sort_order 升序；group_mutex 必须排在 ingredient_* 之后
 -- =============================================
 
