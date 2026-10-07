@@ -35,7 +35,8 @@ export default defineConfig({
     proxy: {
       // 可通过 VITE_PROXY_TARGET 指向其它后端（默认本地 8080）
       '/api': { target: process.env.VITE_PROXY_TARGET || 'http://localhost:8080', changeOrigin: true },
-      '/uploads': { target: process.env.VITE_PROXY_TARGET || 'http://localhost:8080', changeOrigin: true }
+      // 上传后的图片由后端 /images 静态目录提供，dev 下需一并代理
+      '/images': { target: process.env.VITE_PROXY_TARGET || 'http://localhost:8080', changeOrigin: true }
     }
   }
 })
