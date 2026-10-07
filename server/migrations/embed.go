@@ -6,6 +6,8 @@
 //	002_catalog.sql           初始数据（菜谱全局预设标签字典），开发与生产都执行
 //	004_shop_tags.sql         探店标签表结构 + 餐厅评分维度变更
 //	005_shop_tag_catalog.sql  初始数据（探店全局预设标签字典），开发与生产都执行
+//	006_inventory.sql         库存食材表结构（存放位置字典 + 库存条目）
+//	007_storage_location_catalog.sql 初始数据（全局预设存放位置），开发与生产都执行
 //	009_demo_seed.sql         演示数据，仅 APP_ENV=development 执行
 //	010_recipe_state_flags.sql 状态字段（已做日期 / 喜欢 / 已探店 / 喜欢菜品）
 //
