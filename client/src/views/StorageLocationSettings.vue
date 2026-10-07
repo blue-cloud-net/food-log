@@ -3,7 +3,7 @@
     <div class="page-header">
       <h2 class="page-title">存放位置管理</h2>
       <div class="flex items-center gap-2">
-        <el-button @click="router.push('/inventory')">返回库存</el-button>
+        <el-button @click="router.push('/settings')">返回设置</el-button>
         <el-button :loading="loading" @click="reload">刷新</el-button>
       </div>
     </div>

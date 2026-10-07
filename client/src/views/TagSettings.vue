@@ -1,7 +1,7 @@
 <template>
   <div class="page-container">
     <div class="page-header">
-      <h2 class="page-title">标签管理</h2>
+      <h2 class="page-title">{{ pageTitle }}</h2>
       <div class="flex items-center gap-2 flex-wrap">
         <el-radio-group v-model="scope" size="small">
           <el-radio-button value="recipe">菜谱标签</el-radio-button>
@@ -9,6 +9,7 @@
           <el-radio-button value="dish">菜品标签</el-radio-button>
         </el-radio-group>
         <el-button :loading="loading" @click="reload">刷新</el-button>
+        <el-button @click="router.push('/settings')">返回设置</el-button>
       </div>
     </div>
 
@@ -149,6 +150,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   createShopTag,
@@ -172,9 +174,18 @@ import { normalizeColor } from '@/utils/tags'
 
 const COLORS = ['primary', 'success', 'warning', 'danger', 'info']
 
-// 菜谱标签与探店标签是两套独立字典，此处用 scope 切换
+// 菜谱标签与探店标签是两套独立字典，此处用 scope 切换（支持 /tags?scope= 深链）
 type Scope = 'recipe' | ShopTagDomain
-const scope = ref<Scope>('recipe')
+const SCOPES: Scope[] = ['recipe', 'restaurant', 'dish']
+
+const route = useRoute()
+const router = useRouter()
+
+function normalizeScope(raw: unknown): Scope {
+  return SCOPES.includes(raw as Scope) ? (raw as Scope) : 'recipe'
+}
+
+const scope = ref<Scope>(normalizeScope(route.query.scope))
 
 const tagsStore = useTagsStore()
 const shopTagsStore = useShopTagsStore()
@@ -184,6 +195,13 @@ const loading = ref(false)
 
 const isRecipe = computed(() => scope.value === 'recipe')
 const shopDomain = computed(() => scope.value as ShopTagDomain)
+
+const TAG_TITLES: Record<Scope, string> = {
+  recipe: '菜谱标签',
+  restaurant: '餐厅标签',
+  dish: '菜品标签'
+}
+const pageTitle = computed(() => TAG_TITLES[scope.value])
 
 const scopeHint = computed(() => {
   if (isRecipe.value) {
@@ -224,6 +242,20 @@ async function reload() {
 
 onMounted(reload)
 watch(scope, reload)
+// 切换 scope 时同步 URL（可直接分享 /tags?scope=restaurant 这类深链）
+watch(scope, (v) => {
+  if (route.query.scope !== v) {
+    router.replace({ query: { ...route.query, scope: v } })
+  }
+})
+// 外部（如设置页深链）改变 query 时同步切换
+watch(
+  () => route.query.scope,
+  (v) => {
+    const next = normalizeScope(v)
+    if (route.name === 'tags' && next !== scope.value) scope.value = next
+  }
+)
 
 // ===== 分类 =====
 const categoryDialog = ref(false)
