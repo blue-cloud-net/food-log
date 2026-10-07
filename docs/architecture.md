@@ -31,7 +31,7 @@ graph TB
 
     subgraph 数据层
         K[PostgreSQL 16]
-        L[本地 uploads/ 图片存储]
+        L[本地 data/images/ 图片存储]
     end
 
     A --> D
@@ -150,15 +150,18 @@ sequenceDiagram
 
 ```mermaid
 graph LR
-    A[用户上传大图] --> B[Multer 接收]
+    A[用户上传大图] --> B[multipart 落盘 data/tmp/]
     B --> C[解码图像]
     C --> D[重采样至 ≤1920px 宽]
     D --> E[编码为 JPEG quality 82]
     E --> F[另存 400px 宽缩略图 _thumb.jpg]
-    F --> G[返回 原图URL + 缩略图URL]
+    F --> G[原图/缩略图原子重命名至 images/]
+    G --> H[返回 原图URL + 缩略图URL]
 ```
 
-存储规则：`uploads/YYYY/MM/uuid.jpg`（原图）与 `uploads/YYYY/MM/uuid_thumb.jpg`（缩略图）。
+存储规则：`images/{type}/YYYY/MM/uuid.jpg`（原图）与 `images/{type}/YYYY/MM/uuid_thumb.jpg`（缩略图），
+其中 `type` 为图片用途（`recipe` / `restaurant`），由上传接口的 `type` 字段决定；
+multipart 文件与编码结果先写入 `data/tmp/` 再原子重命名到位，服务启动时清空 `data/tmp/` 残留。
 
 ## 7.1 自动标签与 AI 识别
 
@@ -213,37 +216,65 @@ graph LR
 
 ```mermaid
 graph LR
-    A[用户] -->|80| B[Nginx 容器]
-    B -->|静态文件| C[Vue SPA]
-    B -->|/api| D[Go 后端 :8080]
-    D -->|SQL| E[PostgreSQL :5432]
-    D -->|读写| F[uploads volume]
+    A[用户] -->|8080| B[app 容器 / Go 单进程]
+    B -->|/api| C[API 路由]
+    B -->|/images| D[图片静态服务]
+    B -->|其余路径| E[内嵌前端 SPA]
+    B -->|SQL| F[PostgreSQL :5432]
+    B -->|读写| G[./data 数据目录]
+    B -->|启动时| H[Schema 迁移 + admin 引导]
 ```
 
-三个容器通过 Docker Compose 编排，数据（数据库 + 图片）使用 volume 持久化。
+两个容器通过 Docker Compose 编排（`db` + `app`）：
+
+- **app 单镜像**：前端构建产物通过 `go:embed` 编进 Go 二进制，同一进程提供 API、图片静态资源与 SPA（含深链接回退），不再需要 Nginx
+- **数据持久化**：PostgreSQL 使用命名卷 `foodlog-pgdata`；应用数据（凭证 / 上传中转 / 图片）使用宿主机目录 `./data`（容器内 `/app/data`）
+- **启动自愈**：app 启动时检测空库并初始化，随后执行增量迁移；生产模式还会按环境变量引导 admin 账号
+
+### 发布流程
+
+- `main` 分支 push：GitHub Actions 执行后端 `go vet` / `go build` / `go test` 与前端 `typecheck` / `build`
+- 推送 `v*` tag：构建单镜像并推送 `ghcr.io/blue-cloud-net/food-log:<tag>` 与 `:latest`
+
+### 数据目录
+
+| 路径 | 内容 |
+|---|---|
+| `data/credentials/` | 自动生成的 admin 密码（仅生产、未设 `ADMIN_PASSWORD` 时） |
+| `data/tmp/` | 上传中转与原子写入中间文件，服务启动时清空 |
+| `data/images/recipe/` | 菜谱图片（原图 + `_thumb` 缩略图） |
+| `data/images/restaurant/` | 餐厅与菜品图片 |
 
 ## 10. 目录结构
 
 ```
 food-log/
+├── Dockerfile               # 单镜像构建（前端构建 → go:embed → Go 二进制）
+├── docker-compose.yml       # 生产编排（db + app）
+├── docker-compose.dev.yml   # 开发编排（db + server[air] + client[Vite]）
+├── data/                    # 运行时数据（credentials / tmp / images）
 ├── docs/                    # 开发文档
-├── scripts/                 # 工具脚本
+├── scripts/                 # 工具脚本（start-dev / stop-dev / build）
 ├── server/                  # Go 后端
-│   ├── cmd/main.go          # 入口
+│   ├── cmd/main.go          # 入口（建目录 → 迁移 → 引导 admin → 启动 HTTP）
+│   ├── Dockerfile.dev       # 开发镜像（air 热重载）
+│   ├── .air.toml            # air 配置
 │   ├── internal/
-│   │   ├── config/          # 配置加载
+│   │   ├── config/          # 配置加载（DATA_DIR / 运行模式 / admin）
+│   │   ├── database/        # 连接、迁移执行、admin 引导
+│   │   ├── storage/         # 数据目录布局与中转清理
+│   │   ├── web/             # 内嵌前端产物 + SPA 服务
 │   │   ├── model/           # 数据模型
 │   │   ├── repository/      # 数据访问
-│   │   ├── service/         # 业务逻辑
+│   │   ├── service/         # 业务逻辑（含图片上传处理）
 │   │   ├── handler/         # HTTP 处理器
 │   │   ├── middleware/      # 中间件
 │   │   ├── tagging/         # 自动标签（词典 + 核心逻辑）
 │   │   ├── ai/              # AI Provider（接口 + OpenAI/Ollama 实现）
 │   │   └── router/          # 路由
-│   ├── migrations/          # SQL 迁移
-│   └── uploads/             # 上传图片
-├── client/                  # Vue 前端
-│   ├── public/              # 静态资源 + PWA 图标
-│   └── src/
-└── docker-compose.yml
+│   └── migrations/          # SQL 迁移（embed，启动时执行）
+└── client/                  # Vue 前端
+    ├── Dockerfile.dev       # 开发镜像（Vite dev server）
+    ├── public/              # 静态资源 + PWA 图标
+    └── src/
 ```

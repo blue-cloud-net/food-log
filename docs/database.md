@@ -90,7 +90,7 @@ erDiagram
 | cook_time_minutes | INT | | 烹饪耗时（分钟） |
 | difficulty | VARCHAR(20) | CHECK in (easy,medium,hard) | 难度 |
 | rating | SMALLINT | CHECK 1-5 | 自评 |
-| images | JSONB | | 图片 `["/uploads/xx.jpg"]` |
+| images | JSONB | | 图片 `["/images/recipe/xx.jpg"]` |
 | created_at | TIMESTAMPTZ | | |
 | updated_at | TIMESTAMPTZ | | |
 
@@ -178,17 +178,27 @@ CREATE INDEX idx_dishes_restaurant ON dishes(restaurant_id, eaten_at DESC);
 
 ## 5. 迁移文件
 
-| 文件 | 内容 |
-|---|---|
-| `server/migrations/001_init.sql` | 建表 + 索引 + 触发器 |
-| `server/migrations/002_seed.sql` | 测试种子数据（示例菜谱使用固定 UUID，便于标签种子引用） |
-| `server/migrations/003_favorites.sql` | 菜谱收藏表 |
-| `server/migrations/004_tags.sql` | 标签分类/标签/关联/规则表 + 全局预设词表与规则种子 |
-| `server/migrations/005_recipe_tags_migrate.sql` | 存量 `recipes.tags` → 自定义标签并删除该列；演示菜谱标签种子 |
+迁移文件内嵌在服务二进制中（`server/migrations/embed.go`），由 `server/internal/database/migrate.go` 在**服务启动时**执行，不再依赖独立脚本。
 
-> **执行方式**：Docker 路径由 `scripts/migrate-docker.sh` 通过 `schema_migrations` 表记录并跳过已执行文件；
-> 本地/远程路径 `scripts/migrate.sh` **每次全量重跑**所有 `.sql`，因此所有迁移文件必须幂等。
-> `recipes.tags` 的建表列与 GIN 索引已从 `001` 中移除。
+| 文件 | 内容 | 执行范围 |
+|---|---|---|
+| `server/migrations/001_schema.sql` | 全部表 / 索引 / 触发器（用户、菜谱、餐厅、菜品、收藏、标签分类/标签/关联/规则） | 开发 + 生产 |
+| `server/migrations/002_catalog.sql` | 初始数据：全局预设分类、标签词表与自动标签规则（固定 UUID） | 开发 + 生产 |
+| `server/migrations/003_demo_seed.sql` | 演示数据：`admin/admin` 账号、示例菜谱/餐厅/菜品、演示菜谱标签 | **仅开发** |
+
+> **执行方式**：服务启动时自动执行，`schema_migrations` 表记录已执行文件名并跳过重复项；
+> 每个文件在独立事务内执行，失败则回滚并终止启动。
+> `APP_ENV=development` 时额外执行 `003_demo_seed.sql`；生产模式（`APP_ENV` 默认值）跳过演示数据。
+> 迁移期间使用 `pg_advisory_lock` 串行化，避免多实例并发初始化。
+>
+> **空库初始化**：检测到不存在 `users` 表时执行全量初始化；已初始化的库只补执行新增迁移文件。
+>
+> **管理员引导**（仅生产模式）：库中不存在 `ADMIN_USERNAME`（默认 `admin`）时创建该账号，
+> 密码取 `ADMIN_PASSWORD`；未设置则生成 UUIDv7 随机密码并写入
+> `{DATA_DIR}/credentials/admin-password.txt`（权限 0600），后续启动复用该文件；
+> 已存在的账号不会被覆盖。
+>
+> 全部迁移文件必须幂等（`IF NOT EXISTS` / `ON CONFLICT`），以便在旧库上重复执行不产生副作用。
 
 ## 6. 迁移记录
 
@@ -198,4 +208,5 @@ CREATE INDEX idx_dishes_restaurant ON dishes(restaurant_id, eaten_at DESC);
 | 002 | 2026-08-11 | 种子数据 |
 | 003 | 2026-08-16 | 菜谱收藏表 |
 | 004 | 2026-10-07 | 标签字典化：分类/标签/关联/规则表 + 预设词表种子 |
+| 整合 | 2026-10-07 | 原 5 个迁移文件整合为结构 / 初始数据 / 演示数据三个文件，改由服务启动时执行 |
 | 005 | 2026-10-07 | 存量标签迁移，删除 `recipes.tags` 列 |
