@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -25,7 +26,7 @@ const dishCols = `id, restaurant_id, user_id, name, COALESCE(description,''), pr
 func scanDish(row pgx.Row) (*model.Dish, error) {
 	var d model.Dish
 	var images []byte
-	var eatenAt *string
+	var eatenAt *time.Time
 	err := row.Scan(&d.ID, &d.RestaurantID, &d.UserID, &d.Name, &d.Description,
 		&d.Price, &d.Rating, &images, &eatenAt, &d.CreatedAt)
 	if err != nil {
@@ -33,7 +34,8 @@ func scanDish(row pgx.Row) (*model.Dish, error) {
 	}
 	json.Unmarshal(images, &d.Images)
 	if eatenAt != nil {
-		d.EatenAt = eatenAt
+		formatted := eatenAt.Format("2006-01-02")
+		d.EatenAt = &formatted
 	}
 	return &d, nil
 }
