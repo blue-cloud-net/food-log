@@ -124,7 +124,7 @@ Authorization: Bearer <token>
 
 ### 3.1 列表
 
-`GET /api/recipes?page=1&page_size=10&keyword=&difficulty=&tag=&ingredient_tag=&sort=created_at&favorite=false`
+`GET /api/recipes?page=1&page_size=10&keyword=&difficulty=&tag=&ingredient_tag=&sort=created_at&favorite=false&made=&liked=false`
 
 | 参数 | 类型 | 说明 |
 |---|---|---|
@@ -136,6 +136,8 @@ Authorization: Bearer <token>
 | ingredient_tag | string | **食材级**标签筛选（标签 id） |
 | sort | string | created_at/rating/cook_time |
 | favorite | bool | `true` 时只返回已收藏菜谱 |
+| made | string | `true` 只返回**已做**（`made_at` 非空）；`false` 只返回**未做**；缺省全部 |
+| liked | bool | `true` 时只返回**喜欢**的菜谱（`is_liked`，独立于收藏） |
 
 响应 `data`：
 ```json
@@ -153,6 +155,8 @@ Authorization: Bearer <token>
       "tags": ["<标签 id>"],
       "ingredient_tags": ["<标签 id>"],
       "images": ["/images/recipe/2026/08/xxx.jpg", "/images/recipe/2026/08/xxx_thumb.jpg"],
+      "made_at": "2026-08-10",
+      "is_liked": true,
       "is_favorited": true,
       "created_at": "2026-08-11T10:00:00Z",
       "updated_at": "2026-08-11T10:00:00Z"
@@ -182,11 +186,14 @@ Authorization: Bearer <token>
   "difficulty": "medium",
   "rating": 5,
   "tags": ["<标签 id>"],
-  "images": ["/images/recipe/2026/08/xxx.jpg"]
+  "images": ["/images/recipe/2026/08/xxx.jpg"],
+  "made_at": "2026-08-10",
+  "is_liked": false
 }
 ```
 
 > 请求中的 `tags` 为标签 id 数组（仅**菜谱级**手选标签）。`ingredient_tags` 由服务端计算，请求中传入会被忽略。
+> `made_at` 为做过日期（`YYYY-MM-DD`，可空，空/缺省 = 未做）；`is_liked` 为「喜欢」标记（独立于收藏）。
 > 无效或不可见的标签 id 返回 400。响应 `data`：完整菜谱对象（含 `tags` 与 `ingredient_tags`）。
 
 ### 3.3 菜谱详情
@@ -246,7 +253,7 @@ Authorization: Bearer <token>
 
 从符合条件的菜谱中随机返回一条（`tag` / `ingredient_tag` 均为标签 id）。无匹配时返回 404。响应 `data` 为完整菜谱对象。
 
-### 3.9 收藏 / 取消收藏
+### 3.9 收藏 / 已做 / 喜欢
 
 `POST /api/recipes/:id/favorite` 🔒
 
@@ -257,6 +264,20 @@ Authorization: Bearer <token>
 响应 `data`：`{ "favorited": false }`
 
 列表与详情接口均返回 `is_favorited` 字段；列表可通过 `favorite=true` 过滤。
+
+`PUT /api/recipes/:id/made` 🔒
+
+请求：`{ "made_at": "2026-08-10" }`；`made_at` 为 `null` / 空字符串时表示**取消已做**。
+
+响应 `data`：`{ "made_at": "2026-08-10" }`（取消时为 `null`）
+
+`PUT /api/recipes/:id/like` 🔒
+
+请求：`{ "liked": true }`
+
+响应 `data`：`{ "is_liked": true }`
+
+列表与详情均返回 `made_at` / `is_liked`；列表可通过 `made=true|false`、`liked=true` 过滤（首页「自制」分组即基于此）。
 
 ### 3.10 AI 图片识别
 
@@ -313,13 +334,14 @@ Authorization: Bearer <token>
 
 ### 4.1 列表
 
-`GET /api/restaurants?page=1&page_size=10&keyword=&tag=&sort=`
+`GET /api/restaurants?page=1&page_size=10&keyword=&tag=&sort=&visited=`
 
 | 参数 | 说明 |
 |---|---|
 | keyword | 模糊匹配店名 / 地址 |
 | tag | **餐厅标签 id**，按标签筛选 |
 | sort | `recommend`（推荐度）\| `value`（性价比）\| `ambience`（环境）\| `service`（服务）；缺省按创建时间倒序 |
+| visited | `true` 只返回**已探店**；`false` 只返回**未探店**；缺省全部 |
 
 响应 `data`：
 ```json
@@ -338,6 +360,7 @@ Authorization: Bearer <token>
       "images": ["/images/restaurant/2026/08/rest.jpg"],
       "lat": 30.5,
       "lng": 104.0,
+      "is_visited": true,
       "dish_count": 6,
       "created_at": "2026-08-11T10:00:00Z"
     }
@@ -365,11 +388,12 @@ Authorization: Bearer <token>
   "service_rating": 4,
   "images": ["/images/restaurant/2026/08/rest.jpg"],
   "lat": 30.5,
-  "lng": 104.0
+  "lng": 104.0,
+  "is_visited": true
 }
 ```
 
-四个评分字段均为 1-5，`0` / 缺省表示未评分（存 NULL）。`tags` 为餐厅标签 id，必须是当前用户可见的标签，否则返回 400。
+四个评分字段均为 1-5，`0` / 缺省表示未评分（存 NULL）。`is_visited` 为是否已探店（缺省 `false` = 未探店）。`tags` 为餐厅标签 id，必须是当前用户可见的标签，否则返回 400。
 
 ### 4.3 餐厅详情（含菜品）
 
@@ -392,6 +416,7 @@ Authorization: Bearer <token>
   "images": [],
   "lat": 30.5,
   "lng": 104.0,
+  "is_visited": true,
   "dish_count": 1,
   "created_at": "2026-08-11T10:00:00Z",
   "dishes": [
@@ -404,6 +429,7 @@ Authorization: Bearer <token>
       "tags": ["<菜品标签 id>"],
       "images": [],
       "eaten_at": "2026-08-10",
+      "is_liked": false,
       "created_at": "2026-08-11T10:00:00Z"
     }
   ]
@@ -454,11 +480,12 @@ Authorization: Bearer <token>
   "rating": 5,
   "tags": ["<菜品标签 id>"],
   "images": ["/images/restaurant/2026/08/fish.jpg"],
-  "eaten_at": "2026-08-10"
+  "eaten_at": "2026-08-10",
+  "is_liked": false
 }
 ```
 
-`rating` 为 1-5，界面上展示为**推荐度**；`0` / 缺省表示未评分（存 NULL）。`tags` 为菜品标签 id，必须是当前用户可见的标签，否则返回 400。
+`rating` 为 1-5，界面上展示为**推荐度**；`0` / 缺省表示未评分（存 NULL）。`is_liked` 为「喜欢该菜品」标记。`tags` 为菜品标签 id，必须是当前用户可见的标签，否则返回 400。
 
 ### 5.2 更新菜品
 
@@ -486,6 +513,27 @@ Authorization: Bearer <token>
 | POST | `/api/dish-tag-categories` | 新建自定义分类 |
 | PUT | `/api/dish-tag-categories/:id` | 改名/改色/改排序 |
 | DELETE | `/api/dish-tag-categories/:id` | 删除分类（级联删除其下标签） |
+
+### 5.6 菜品列表（跨餐厅）
+
+`GET /api/dishes?page=1&page_size=10&liked=&keyword=&tag=&restaurant_id=` 🔒
+
+| 参数 | 说明 |
+|---|---|
+| liked | `true` 只返回**喜欢**的菜品 |
+| keyword | 模糊匹配菜名 |
+| tag | **菜品标签 id**，按标签筛选 |
+| restaurant_id | 限定某餐厅下的菜品 |
+
+返回分页菜品列表，每项额外带 `restaurant_name`（所属餐厅名），字段与详情内菜品一致。首页「喜欢菜品」分组使用 `liked=true`。
+
+### 5.7 标记菜品喜欢
+
+`PUT /api/dishes/:id/like` 🔒
+
+请求：`{ "liked": true }`
+
+响应 `data`：`{ "is_liked": true }`
 
 ## 6. 图片上传 `/upload`
 
@@ -597,6 +645,10 @@ interface Recipe {
   /** 食材级标签 id（服务端自动派生） */
   ingredient_tags: string[];
   images: string[];
+  /** 做过日期 YYYY-MM-DD（null = 未做） */
+  made_at: string | null;
+  /** 喜欢（独立于收藏） */
+  is_liked: boolean;
   is_favorited: boolean;
   created_at: string; updated_at: string;
 }
@@ -616,6 +668,8 @@ interface Restaurant {
   service_rating: number;
   images: string[];
   lat?: number; lng?: number;
+  /** 是否已探店（false = 未探店） */
+  is_visited: boolean;
   dish_count?: number; created_at: string;
 }
 
@@ -626,6 +680,11 @@ interface Dish {
   rating?: number;
   /** 菜品标签 id */
   tags: string[];
-  images: string[]; eaten_at?: string; created_at: string;
+  images: string[]; eaten_at?: string;
+  /** 喜欢该菜品 */
+  is_liked: boolean;
+  /** 列表接口返回的所属餐厅名 */
+  restaurant_name?: string;
+  created_at: string;
 }
 ```

@@ -47,6 +47,8 @@ erDiagram
         varchar difficulty
         smallint rating
         jsonb images
+        date made_at
+        boolean is_liked
         timestamptz created_at
         timestamptz updated_at
     }
@@ -63,6 +65,7 @@ erDiagram
         jsonb images
         double lat
         double lng
+        boolean is_visited
         timestamptz created_at
         timestamptz updated_at
     }
@@ -76,6 +79,7 @@ erDiagram
         smallint rating
         jsonb images
         date eaten_at
+        boolean is_liked
         timestamptz created_at
     }
     tag_categories {
@@ -160,6 +164,8 @@ erDiagram
 | difficulty | VARCHAR(20) | CHECK in (easy,medium,hard) | 难度 |
 | rating | SMALLINT | CHECK 1-5 | 自评 |
 | images | JSONB | | 图片 `["/images/recipe/xx.jpg"]` |
+| made_at | DATE | | 做过日期（NULL = 未做） |
+| is_liked | BOOLEAN | NOT NULL DEFAULT false | 喜欢（独立于收藏） |
 | created_at | TIMESTAMPTZ | | |
 | updated_at | TIMESTAMPTZ | | |
 
@@ -181,6 +187,7 @@ erDiagram
 | images | JSONB | | 环境照片 |
 | lat | DOUBLE PRECISION | | 纬度 |
 | lng | DOUBLE PRECISION | | 经度 |
+| is_visited | BOOLEAN | NOT NULL DEFAULT false | 是否已探店 |
 | created_at | TIMESTAMPTZ | | |
 | updated_at | TIMESTAMPTZ | | |
 
@@ -203,9 +210,11 @@ erDiagram
 | rating | SMALLINT | CHECK 1-5 | 推荐度（界面文案） |
 | images | JSONB | | 照片 |
 | eaten_at | DATE | | 就餐日期 |
+| is_liked | BOOLEAN | NOT NULL DEFAULT false | 喜欢该菜品 |
 | created_at | TIMESTAMPTZ | | |
 
 > `rating` 沿用旧列名，语义即界面上展示的「推荐度」。菜品的标签由 `dish_tag_categories` / `dish_tags` / `dish_tag_links` 承载。
+> `is_liked` 为「喜欢该菜品」标记，用于首页「喜欢菜品」分组。
 
 ### 2.5 recipe_favorites — 菜谱收藏表
 
