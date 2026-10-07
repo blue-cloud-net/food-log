@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -25,7 +26,7 @@ func NewRecipeRepo(pool *pgxpool.Pool) *RecipeRepo {
 }
 
 const recipeCols = `id, user_id, name, COALESCE(description,''), ingredients, steps,
-	cook_time_minutes, COALESCE(difficulty,''), rating, images, created_at, updated_at`
+	cook_time_minutes, COALESCE(difficulty,''), rating, images, made_at, is_liked, created_at, updated_at`
 
 // dbExecutor 同时兼容 *pgxpool.Pool 与 pgx.Tx，便于复用同一段 SQL
 type dbExecutor interface {
@@ -39,9 +40,11 @@ func scanRecipe(row pgx.Row) (*model.Recipe, error) {
 	var ingredients, steps, images []byte
 	var cookTime *int
 	var rating *int
+	// made_at 是 DATE 列：pgx 无法直接把 date 扫进 **string，须经 *time.Time 中转再格式化为 YYYY-MM-DD
+	var madeAt *time.Time
 	err := row.Scan(&r.ID, &r.UserID, &r.Name, &r.Description,
 		&ingredients, &steps, &cookTime, &r.Difficulty, &rating, &images,
-		&r.CreatedAt, &r.UpdatedAt)
+		&madeAt, &r.IsLiked, &r.CreatedAt, &r.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -53,6 +56,10 @@ func scanRecipe(row pgx.Row) (*model.Recipe, error) {
 	}
 	if rating != nil {
 		r.Rating = *rating
+	}
+	if madeAt != nil {
+		s := madeAt.Format("2006-01-02")
+		r.MadeAt = &s
 	}
 	// 标签由 TagRepo 单独填充，避免 JSONB 字段与非空数组语义混淆
 	r.Tags = []string{}
@@ -92,12 +99,12 @@ func createRecipe(ctx context.Context, q dbExecutor, rec *model.Recipe) error {
 	images := marshalArray(rec.Images)
 
 	row := q.QueryRow(ctx,
-		`INSERT INTO recipes (user_id, name, description, ingredients, steps, cook_time_minutes, difficulty, rating, images)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+		`INSERT INTO recipes (user_id, name, description, ingredients, steps, cook_time_minutes, difficulty, rating, images, made_at, is_liked)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 		 RETURNING `+recipeCols,
 		rec.UserID, rec.Name, rec.Description, ingredients, steps,
 		nullableInt(rec.CookTimeMinutes), nullableString(&rec.Difficulty), nullableInt(rec.Rating),
-		images)
+		images, nullableString(rec.MadeAt), rec.IsLiked)
 	if err := scanRecipeRow(ctx, row, rec); err != nil {
 		return err
 	}
@@ -117,7 +124,8 @@ func (r *RecipeRepo) GetByID(ctx context.Context, id string) (*model.Recipe, err
 
 // List 菜谱列表（分页 + 搜索 + 筛选）
 // tagID 过滤菜谱级标签，ingredientTagID 过滤食材级标签
-func (r *RecipeRepo) List(ctx context.Context, userID string, q *model.PageQuery, keyword, difficulty, tagID, ingredientTagID, sort string, isFavorite bool) ([]*model.Recipe, int64, error) {
+// made 为 "true"/"false"（其余值不过滤）用于「已做/未做」，liked 为 true 时仅返回「喜欢」
+func (r *RecipeRepo) List(ctx context.Context, userID string, q *model.PageQuery, keyword, difficulty, tagID, ingredientTagID, sort string, isFavorite bool, made string, liked bool) ([]*model.Recipe, int64, error) {
 	var where []string
 	var args []any
 	args = append(args, userID)
@@ -144,6 +152,15 @@ func (r *RecipeRepo) List(ctx context.Context, userID string, q *model.PageQuery
 	if isFavorite {
 		args = append(args, userID)
 		where = append(where, fmt.Sprintf("EXISTS (SELECT 1 FROM recipe_favorites rf WHERE rf.recipe_id = recipes.id AND rf.user_id = $%d)", len(args)))
+	}
+	switch made {
+	case "true":
+		where = append(where, "made_at IS NOT NULL")
+	case "false":
+		where = append(where, "made_at IS NULL")
+	}
+	if liked {
+		where = append(where, "is_liked = true")
 	}
 	whereClause := strings.Join(where, " AND ")
 
@@ -205,11 +222,12 @@ func updateRecipe(ctx context.Context, q dbExecutor, rec *model.Recipe) error {
 	row := q.QueryRow(ctx,
 		`UPDATE recipes SET
 		   name=$2, description=$3, ingredients=$4, steps=$5,
-		   cook_time_minutes=$6, difficulty=$7, rating=$8, images=$9
+		   cook_time_minutes=$6, difficulty=$7, rating=$8, images=$9,
+		   made_at=$10, is_liked=$11, updated_at=now()
 		 WHERE id=$1 RETURNING `+recipeCols,
 		rec.ID, rec.Name, rec.Description, ingredients, steps,
 		nullableInt(rec.CookTimeMinutes), nullableString(&rec.Difficulty), nullableInt(rec.Rating),
-		images)
+		images, nullableString(rec.MadeAt), rec.IsLiked)
 	if err := scanRecipeRow(ctx, row, rec); err != nil {
 		return err
 	}
@@ -220,6 +238,22 @@ func updateRecipe(ctx context.Context, q dbExecutor, rec *model.Recipe) error {
 // Delete 删除菜谱
 func (r *RecipeRepo) Delete(ctx context.Context, id string) error {
 	_, err := r.pool.Exec(ctx, `DELETE FROM recipes WHERE id = $1`, id)
+	return err
+}
+
+// SetMade 设置「做过日期」（nil 表示未做）
+func (r *RecipeRepo) SetMade(ctx context.Context, id string, madeAt *string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE recipes SET made_at = $2, updated_at = now() WHERE id = $1`,
+		id, nullableString(madeAt))
+	return err
+}
+
+// SetLiked 设置「喜欢」标记
+func (r *RecipeRepo) SetLiked(ctx context.Context, id string, liked bool) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE recipes SET is_liked = $2, updated_at = now() WHERE id = $1`,
+		id, liked)
 	return err
 }
 

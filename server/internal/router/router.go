@@ -97,6 +97,8 @@ func Setup(cfg *config.Config, pool *pgxpool.Pool) *gin.Engine {
 			recipes.DELETE("/:id", recipeHandler.Delete)
 			recipes.POST("/:id/favorite", recipeHandler.Favorite)
 			recipes.DELETE("/:id/favorite", recipeHandler.Unfavorite)
+			recipes.PUT("/:id/made", recipeHandler.SetMade)
+			recipes.PUT("/:id/like", recipeHandler.SetLiked)
 		}
 
 		// 餐厅

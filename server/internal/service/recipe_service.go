@@ -154,8 +154,9 @@ func (s *RecipeService) fillFavorited(ctx context.Context, userID string, list [
 
 // List 菜谱列表
 // tagID 过滤菜谱级标签，ingredientTagID 过滤食材级标签
-func (s *RecipeService) List(ctx context.Context, userID string, q *model.PageQuery, keyword, difficulty, tagID, ingredientTagID, sort string, isFavorite bool) (*model.Paginated, error) {
-	list, total, err := s.recipeRepo.List(ctx, userID, q, keyword, difficulty, tagID, ingredientTagID, sort, isFavorite)
+// made 为 "true"/"false"（其余值不过滤）用于「已做/未做」，liked 为 true 时仅返回「喜欢」
+func (s *RecipeService) List(ctx context.Context, userID string, q *model.PageQuery, keyword, difficulty, tagID, ingredientTagID, sort string, isFavorite bool, made string, liked bool) (*model.Paginated, error) {
+	list, total, err := s.recipeRepo.List(ctx, userID, q, keyword, difficulty, tagID, ingredientTagID, sort, isFavorite, made, liked)
 	if err != nil {
 		return nil, err
 	}
@@ -230,6 +231,22 @@ func (s *RecipeService) Unfavorite(ctx context.Context, userID, id string) error
 		return err
 	}
 	return s.favoriteRepo.Remove(ctx, userID, id)
+}
+
+// SetMade 标记「已做」（madeAt 为 nil 表示未做）
+func (s *RecipeService) SetMade(ctx context.Context, userID, id string, madeAt *string) error {
+	if _, err := s.Get(ctx, userID, id); err != nil {
+		return err
+	}
+	return s.recipeRepo.SetMade(ctx, id, madeAt)
+}
+
+// SetLiked 标记「喜欢」（独立于收藏）
+func (s *RecipeService) SetLiked(ctx context.Context, userID, id string, liked bool) error {
+	if _, err := s.Get(ctx, userID, id); err != nil {
+		return err
+	}
+	return s.recipeRepo.SetLiked(ctx, id, liked)
 }
 
 // Random 随机获取一条菜谱（可按标签/难度过滤）

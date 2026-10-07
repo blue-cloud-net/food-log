@@ -34,17 +34,28 @@ type recipeRequest struct {
 	Rating          int                `json:"rating"`
 	Tags            []string           `json:"tags"`
 	Images          []string           `json:"images"`
+	MadeAt          *string            `json:"made_at"`
+	IsLiked         bool               `json:"is_liked"`
+}
+
+// normalizeDate 把空字符串日期规整为 nil，便于「取消已做」
+func normalizeDate(v *string) *string {
+	if v == nil || *v == "" {
+		return nil
+	}
+	return v
 }
 
 // List 菜谱列表
 // tag 过滤菜谱级标签，ingredient_tag 过滤食材级标签（取值均为标签 id）
+// made=true|false 用于「已做/未做」，liked=true 仅返回「喜欢」
 func (h *RecipeHandler) List(c *gin.Context) {
 	userID := httpx.GetUserID(c)
 	q := parsePageQuery(c)
 
 	list, err := h.recipeService.List(c.Request.Context(), userID, q,
 		c.Query("keyword"), c.Query("difficulty"), c.Query("tag"), c.Query("ingredient_tag"),
-		c.Query("sort"), c.Query("favorite") == "true")
+		c.Query("sort"), c.Query("favorite") == "true", c.Query("made"), c.Query("liked") == "true")
 	if err != nil {
 		httpx.RespondErrorWithErr(c, err)
 		return
@@ -75,6 +86,8 @@ func (h *RecipeHandler) Create(c *gin.Context) {
 		Rating:          req.Rating,
 		Tags:            req.Tags,
 		Images:          req.Images,
+		MadeAt:          normalizeDate(req.MadeAt),
+		IsLiked:         req.IsLiked,
 	}
 
 	result, err := h.recipeService.Create(c.Request.Context(), userID, rec)
@@ -115,6 +128,8 @@ func (h *RecipeHandler) Update(c *gin.Context) {
 		Rating:          req.Rating,
 		Tags:            req.Tags,
 		Images:          req.Images,
+		MadeAt:          normalizeDate(req.MadeAt),
+		IsLiked:         req.IsLiked,
 	}
 
 	result, err := h.recipeService.Update(c.Request.Context(), userID, c.Param("id"), rec)
@@ -161,6 +176,46 @@ func (h *RecipeHandler) Unfavorite(c *gin.Context) {
 		return
 	}
 	httpx.RespondOK(c, gin.H{"favorited": false})
+}
+
+type madeRequest struct {
+	MadeAt *string `json:"made_at"`
+}
+
+// SetMade 标记「已做」（body.made_at 为空表示取消已做）
+func (h *RecipeHandler) SetMade(c *gin.Context) {
+	var req madeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.RespondError(c, http.StatusBadRequest, httpx.CodeBadRequest, "参数错误: "+err.Error())
+		return
+	}
+	userID := httpx.GetUserID(c)
+	madeAt := normalizeDate(req.MadeAt)
+	if err := h.recipeService.SetMade(c.Request.Context(), userID, c.Param("id"), madeAt); err != nil {
+		httpx.RespondErrorWithErr(c, err)
+		return
+	}
+	httpx.RespondOK(c, gin.H{"made_at": madeAt})
+}
+
+// likedRequest 通用「喜欢」请求体（菜谱 / 菜品共用）
+type likedRequest struct {
+	Liked bool `json:"liked"`
+}
+
+// SetLiked 标记「喜欢」（独立于收藏）
+func (h *RecipeHandler) SetLiked(c *gin.Context) {
+	var req likedRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.RespondError(c, http.StatusBadRequest, httpx.CodeBadRequest, "参数错误: "+err.Error())
+		return
+	}
+	userID := httpx.GetUserID(c)
+	if err := h.recipeService.SetLiked(c.Request.Context(), userID, c.Param("id"), req.Liked); err != nil {
+		httpx.RespondErrorWithErr(c, err)
+		return
+	}
+	httpx.RespondOK(c, gin.H{"is_liked": req.Liked})
 }
 
 // Random 随机选菜（tag 菜谱级标签、ingredient_tag 食材级标签、difficulty 难度）
