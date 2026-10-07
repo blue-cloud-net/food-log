@@ -114,15 +114,21 @@ client/src/
 | `/inventory` | 库存食材（按「冰箱 / 外面」两级分组） | ✓ |
 | `/inventory/new` | 新增食材 | ✓ |
 | `/inventory/:id/edit` | 编辑食材 | ✓ |
-| `/inventory/locations` | 存放位置管理（预设只读 + 自定义） | ✓ |
-| `/tags` | 标签管理（菜谱 / 餐厅 / 菜品分区） | ✓ |
+| `/inventory/locations` | 存放位置管理（预设只读 + 自定义，入口在设置） | ✓ |
+| `/tags` | 标签管理（菜谱 / 餐厅 / 菜品分区，支持 `?scope=` 深链） | ✓ |
 | `/search` | 全局搜索结果 | ✓ |
-| `/profile` | 个人中心 | ✓ |
+| `/settings` | 设置（数据字典 / AI / 备份的入口聚合页） | ✓ |
+| `/settings/ai` | AI 设置（本地 API Key） | ✓ |
+| `/settings/backup` | 数据备份（导出 JSON / CSV、导入恢复） | ✓ |
+| `/profile` | 我的信息（只读，入口在头像下拉菜单） | ✓ |
+
+> **导航入口单一来源**：`components/layout/SideNav.vue`（桌面侧栏）与 `components/layout/BottomTabBar.vue`（移动底栏）各自维护一份硬编码数组；账号相关入口在 `components/layout/AppLayout.vue` 的头像下拉菜单（我的信息 / 设置 / 退出登录）。
+> **全局枚举统一归口到设置页**：存放位置、菜谱 / 餐厅 / 菜品标签的全面管理只在 `/settings` 进入；功能页只保留必要的快捷操作（如 `TagSelector` 的内联自定义标签），库存列表 / 编辑页不再提供位置新增入口。
 
 ### 5.2 响应式布局
 
-- **移动端（<768px）**：底部 TabBar（首页/菜谱/餐厅/库存/我的）
-- **桌面端（≥768px）**：侧边栏导航
+- **移动端（<768px）**：底部 TabBar（首页/菜谱/餐厅/库存/设置）
+- **桌面端（≥768px）**：侧边栏导航（首页/我的菜谱/餐厅探店/库存食材/设置）
 - 同一套组件，通过 CSS Media Query 自适应
 
 ### 5.3 状态管理
