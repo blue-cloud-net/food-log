@@ -26,7 +26,14 @@
 
         <div class="grid gap-x-3 md:grid-cols-2">
           <el-form-item label="数量">
-            <el-input v-model="form.amount" maxlength="30" placeholder="如：6" />
+            <el-input-number
+              v-model="form.quantity"
+              :min="0.01"
+              :max="99999999"
+              :step="1"
+              controls-position="right"
+              style="width: 100%"
+            />
           </el-form-item>
           <el-form-item label="单位">
             <el-input v-model="form.unit" maxlength="20" placeholder="如：个 / 克 / 盒" />
@@ -127,7 +134,7 @@ const saving = ref(false)
 const form = reactive({
   name: '',
   location_id: '',
-  amount: '',
+  quantity: 1,
   unit: '',
   category: '',
   expire_at: '',
@@ -149,7 +156,7 @@ onMounted(async () => {
   Object.assign(form, {
     name: it.name,
     location_id: it.location_id,
-    amount: it.amount,
+    quantity: it.quantity,
     unit: it.unit,
     category: it.category,
     expire_at: it.expire_at ?? '',
@@ -175,6 +182,10 @@ async function save() {
   }
   if (!form.location_id) {
     ElMessage.warning('请选择存放位置')
+    return
+  }
+  if (!form.quantity || form.quantity <= 0) {
+    ElMessage.warning('请输入数量')
     return
   }
   saving.value = true

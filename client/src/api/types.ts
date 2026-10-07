@@ -165,7 +165,8 @@ export interface InventoryItem {
   user_id: string
   location_id: string
   name: string
-  amount: string
+  /** 数量（> 0），单位见 unit */
+  quantity: number
   unit: string
   category: string
   /** YYYY-MM-DD，null = 未设置 */

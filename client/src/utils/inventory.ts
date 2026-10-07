@@ -48,20 +48,19 @@ function daysUntil(dateStr: string): number {
   return Math.round((target.getTime() - today.getTime()) / 86400000)
 }
 
-/** 保质期状态：已过期 / 临期 / 充足 / 未设置 */
+/** 保质期状态：已过期 / 临期 / 充足 / 未设置。徽标文案只给相对时间，具体日期见 title 与编辑页 */
 export function expiryStatus(expireAt?: string | null): ExpiryStatus {
   if (!expireAt) return { level: 'none', text: '', type: 'info' }
   const days = daysUntil(expireAt)
-  if (days < 0) return { level: 'expired', text: `已过期 ${-days} 天`, type: 'danger' }
-  if (days === 0) return { level: 'soon', text: '今天到期', type: 'warning' }
-  if (days <= EXPIRING_SOON_DAYS) return { level: 'soon', text: `${days} 天后到期`, type: 'warning' }
-  return { level: 'fresh', text: `${days} 天后到期`, type: 'success' }
+  if (days < 0) return { level: 'expired', text: `过期 ${-days} 天`, type: 'danger' }
+  if (days === 0) return { level: 'soon', text: '今天', type: 'warning' }
+  if (days <= EXPIRING_SOON_DAYS) return { level: 'soon', text: `${days} 天`, type: 'warning' }
+  return { level: 'fresh', text: `${days} 天`, type: 'success' }
 }
 
-/** 数量 + 单位展示文本 */
-export function amountText(amount?: string, unit?: string): string {
-  const a = (amount ?? '').trim()
-  const u = (unit ?? '').trim()
-  if (!a && !u) return ''
-  return `${a}${u}`
+/** 数量 + 单位展示文本（整数不带小数，其它最多保留两位） */
+export function quantityText(quantity?: number, unit?: string): string {
+  if (!quantity || quantity <= 0) return ''
+  const n = Number.isInteger(quantity) ? String(quantity) : String(Number(quantity.toFixed(2)))
+  return `${n}${(unit ?? '').trim()}`
 }

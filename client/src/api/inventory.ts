@@ -16,7 +16,8 @@ export interface InventoryQuery {
 export interface InventoryPayload {
   location_id: string
   name: string
-  amount?: string
+  /** 数量（> 0） */
+  quantity: number
   unit?: string
   category?: string
   /** YYYY-MM-DD，空串表示未设置 */
@@ -43,4 +44,17 @@ export function updateInventoryItem(id: string, payload: InventoryPayload) {
 
 export function deleteInventoryItem(id: string) {
   return http.delete(`/inventory/${id}`) as Promise<{ deleted: boolean }>
+}
+
+/** 批量删除，返回实际删除的条数（仅本人的条目会被删除） */
+export function batchDeleteInventoryItems(ids: string[]) {
+  return http.post('/inventory/batch-delete', { ids }) as Promise<{ deleted: number }>
+}
+
+/** 消耗一定数量；数量减到 0 时服务端会自动把该条移出库存 */
+export function consumeInventoryItem(id: string, quantity: number) {
+  return http.post(`/inventory/${id}/consume`, { quantity }) as Promise<{
+    quantity: number
+    removed: boolean
+  }>
 }
