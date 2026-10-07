@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"foodlog/server/internal/model"
@@ -24,22 +25,28 @@ func NewRecipeRepo(pool *pgxpool.Pool) *RecipeRepo {
 }
 
 const recipeCols = `id, user_id, name, COALESCE(description,''), ingredients, steps,
-	cook_time_minutes, COALESCE(difficulty,''), rating, tags, images, created_at, updated_at`
+	cook_time_minutes, COALESCE(difficulty,''), rating, images, created_at, updated_at`
+
+// dbExecutor 同时兼容 *pgxpool.Pool 与 pgx.Tx，便于复用同一段 SQL
+type dbExecutor interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
 
 func scanRecipe(row pgx.Row) (*model.Recipe, error) {
 	var r model.Recipe
-	var ingredients, steps, tags, images []byte
+	var ingredients, steps, images []byte
 	var cookTime *int
 	var rating *int
 	err := row.Scan(&r.ID, &r.UserID, &r.Name, &r.Description,
-		&ingredients, &steps, &cookTime, &r.Difficulty, &rating, &tags, &images,
+		&ingredients, &steps, &cookTime, &r.Difficulty, &rating, &images,
 		&r.CreatedAt, &r.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	json.Unmarshal(ingredients, &r.Ingredients)
 	json.Unmarshal(steps, &r.Steps)
-	json.Unmarshal(tags, &r.Tags)
 	json.Unmarshal(images, &r.Images)
 	if cookTime != nil {
 		r.CookTimeMinutes = *cookTime
@@ -47,6 +54,9 @@ func scanRecipe(row pgx.Row) (*model.Recipe, error) {
 	if rating != nil {
 		r.Rating = *rating
 	}
+	// 标签由 TagRepo 单独填充，避免 JSONB 字段与非空数组语义混淆
+	r.Tags = []string{}
+	r.IngredientTags = []string{}
 	return &r, nil
 }
 
@@ -65,19 +75,34 @@ func marshalArray(v any) []byte {
 
 // Create 创建菜谱
 func (r *RecipeRepo) Create(ctx context.Context, rec *model.Recipe) error {
+	return createRecipe(ctx, r.pool, rec)
+}
+
+// CreateTx 在事务内创建菜谱
+func (r *RecipeRepo) CreateTx(ctx context.Context, tx pgx.Tx, rec *model.Recipe) error {
+	return createRecipe(ctx, tx, rec)
+}
+
+func createRecipe(ctx context.Context, q dbExecutor, rec *model.Recipe) error {
+	// RETURNING 会覆盖出参结构体，标签由调用方另行写入，这里先留存再还原
+	manual, ingredient := rec.Tags, rec.IngredientTags
+
 	ingredients := marshalArray(rec.Ingredients)
 	steps := marshalArray(rec.Steps)
-	tags := marshalArray(rec.Tags)
 	images := marshalArray(rec.Images)
 
-	row := r.pool.QueryRow(ctx,
-		`INSERT INTO recipes (user_id, name, description, ingredients, steps, cook_time_minutes, difficulty, rating, tags, images)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+	row := q.QueryRow(ctx,
+		`INSERT INTO recipes (user_id, name, description, ingredients, steps, cook_time_minutes, difficulty, rating, images)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		 RETURNING `+recipeCols,
 		rec.UserID, rec.Name, rec.Description, ingredients, steps,
 		nullableInt(rec.CookTimeMinutes), nullableString(&rec.Difficulty), nullableInt(rec.Rating),
-		tags, images)
-	return scanRecipeRow(ctx, row, rec)
+		images)
+	if err := scanRecipeRow(ctx, row, rec); err != nil {
+		return err
+	}
+	rec.Tags, rec.IngredientTags = manual, ingredient
+	return nil
 }
 
 // GetByID 通过 ID 查找菜谱
@@ -91,7 +116,8 @@ func (r *RecipeRepo) GetByID(ctx context.Context, id string) (*model.Recipe, err
 }
 
 // List 菜谱列表（分页 + 搜索 + 筛选）
-func (r *RecipeRepo) List(ctx context.Context, userID string, q *model.PageQuery, keyword, difficulty, tag, sort string, isFavorite bool) ([]*model.Recipe, int64, error) {
+// tagID 过滤菜谱级标签，ingredientTagID 过滤食材级标签
+func (r *RecipeRepo) List(ctx context.Context, userID string, q *model.PageQuery, keyword, difficulty, tagID, ingredientTagID, sort string, isFavorite bool) ([]*model.Recipe, int64, error) {
 	var where []string
 	var args []any
 	args = append(args, userID)
@@ -105,10 +131,15 @@ func (r *RecipeRepo) List(ctx context.Context, userID string, q *model.PageQuery
 		args = append(args, difficulty)
 		where = append(where, fmt.Sprintf("difficulty = $%d", len(args)))
 	}
-	if tag != "" {
-		jsonArr, _ := json.Marshal([]string{tag})
-		args = append(args, string(jsonArr))
-		where = append(where, fmt.Sprintf("tags @> $%d::jsonb", len(args)))
+	if tagID != "" {
+		args = append(args, tagID)
+		where = append(where, fmt.Sprintf(
+			"EXISTS (SELECT 1 FROM recipe_tags rt WHERE rt.recipe_id = recipes.id AND rt.tag_id = $%d::uuid)", len(args)))
+	}
+	if ingredientTagID != "" {
+		args = append(args, ingredientTagID)
+		where = append(where, fmt.Sprintf(
+			"EXISTS (SELECT 1 FROM recipe_ingredient_tags rit WHERE rit.recipe_id = recipes.id AND rit.tag_id = $%d::uuid)", len(args)))
 	}
 	if isFavorite {
 		args = append(args, userID)
@@ -155,20 +186,35 @@ func (r *RecipeRepo) List(ctx context.Context, userID string, q *model.PageQuery
 
 // Update 更新菜谱
 func (r *RecipeRepo) Update(ctx context.Context, rec *model.Recipe) error {
+	return updateRecipe(ctx, r.pool, rec)
+}
+
+// UpdateTx 在事务内更新菜谱
+func (r *RecipeRepo) UpdateTx(ctx context.Context, tx pgx.Tx, rec *model.Recipe) error {
+	return updateRecipe(ctx, tx, rec)
+}
+
+func updateRecipe(ctx context.Context, q dbExecutor, rec *model.Recipe) error {
+	// RETURNING 会覆盖出参结构体，标签由调用方另行写入，这里先留存再还原
+	manual, ingredient := rec.Tags, rec.IngredientTags
+
 	ingredients := marshalArray(rec.Ingredients)
 	steps := marshalArray(rec.Steps)
-	tags := marshalArray(rec.Tags)
 	images := marshalArray(rec.Images)
 
-	row := r.pool.QueryRow(ctx,
+	row := q.QueryRow(ctx,
 		`UPDATE recipes SET
 		   name=$2, description=$3, ingredients=$4, steps=$5,
-		   cook_time_minutes=$6, difficulty=$7, rating=$8, tags=$9, images=$10
+		   cook_time_minutes=$6, difficulty=$7, rating=$8, images=$9
 		 WHERE id=$1 RETURNING `+recipeCols,
 		rec.ID, rec.Name, rec.Description, ingredients, steps,
 		nullableInt(rec.CookTimeMinutes), nullableString(&rec.Difficulty), nullableInt(rec.Rating),
-		tags, images)
-	return scanRecipeRow(ctx, row, rec)
+		images)
+	if err := scanRecipeRow(ctx, row, rec); err != nil {
+		return err
+	}
+	rec.Tags, rec.IngredientTags = manual, ingredient
+	return nil
 }
 
 // Delete 删除菜谱
@@ -194,7 +240,7 @@ func nullableInt(v int) any {
 }
 
 // Random 随机返回一条菜谱（可按标签/难度过滤），无记录时返回 nil
-func (r *RecipeRepo) Random(ctx context.Context, userID, tag, difficulty string) (*model.Recipe, error) {
+func (r *RecipeRepo) Random(ctx context.Context, userID, tagID, ingredientTagID, difficulty string) (*model.Recipe, error) {
 	var where []string
 	var args []any
 	args = append(args, userID)
@@ -203,10 +249,15 @@ func (r *RecipeRepo) Random(ctx context.Context, userID, tag, difficulty string)
 		args = append(args, difficulty)
 		where = append(where, fmt.Sprintf("difficulty = $%d", len(args)))
 	}
-	if tag != "" {
-		jsonArr, _ := json.Marshal([]string{tag})
-		args = append(args, string(jsonArr))
-		where = append(where, fmt.Sprintf("tags @> $%d::jsonb", len(args)))
+	if tagID != "" {
+		args = append(args, tagID)
+		where = append(where, fmt.Sprintf(
+			"EXISTS (SELECT 1 FROM recipe_tags rt WHERE rt.recipe_id = recipes.id AND rt.tag_id = $%d::uuid)", len(args)))
+	}
+	if ingredientTagID != "" {
+		args = append(args, ingredientTagID)
+		where = append(where, fmt.Sprintf(
+			"EXISTS (SELECT 1 FROM recipe_ingredient_tags rit WHERE rit.recipe_id = recipes.id AND rit.tag_id = $%d::uuid)", len(args)))
 	}
 
 	row := r.pool.QueryRow(ctx,

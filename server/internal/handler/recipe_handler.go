@@ -11,39 +11,40 @@ import (
 	"foodlog/server/internal/httpx"
 	"foodlog/server/internal/model"
 	"foodlog/server/internal/service"
-	"foodlog/server/internal/tagging"
 )
 
 // RecipeHandler 菜谱处理器
 type RecipeHandler struct {
 	recipeService *service.RecipeService
+	tagService    *service.TagService
 	aiProvider    ai.Provider // 可为 nil（AI 未配置）
 }
 
-func NewRecipeHandler(recipeService *service.RecipeService, aiProvider ai.Provider) *RecipeHandler {
-	return &RecipeHandler{recipeService: recipeService, aiProvider: aiProvider}
+func NewRecipeHandler(recipeService *service.RecipeService, tagService *service.TagService, aiProvider ai.Provider) *RecipeHandler {
+	return &RecipeHandler{recipeService: recipeService, tagService: tagService, aiProvider: aiProvider}
 }
 
 type recipeRequest struct {
-	Name            string            `json:"name" binding:"required,max=200"`
-	Description     string            `json:"description"`
+	Name            string             `json:"name" binding:"required,max=200"`
+	Description     string             `json:"description"`
 	Ingredients     []model.Ingredient `json:"ingredients"`
-	Steps           []model.Step      `json:"steps"`
-	CookTimeMinutes int               `json:"cook_time_minutes"`
-	Difficulty      string            `json:"difficulty"`
-	Rating          int               `json:"rating"`
-	Tags            []string          `json:"tags"`
-	Images          []string          `json:"images"`
+	Steps           []model.Step       `json:"steps"`
+	CookTimeMinutes int                `json:"cook_time_minutes"`
+	Difficulty      string             `json:"difficulty"`
+	Rating          int                `json:"rating"`
+	Tags            []string           `json:"tags"`
+	Images          []string           `json:"images"`
 }
 
 // List 菜谱列表
+// tag 过滤菜谱级标签，ingredient_tag 过滤食材级标签（取值均为标签 id）
 func (h *RecipeHandler) List(c *gin.Context) {
 	userID := httpx.GetUserID(c)
 	q := parsePageQuery(c)
 
 	list, err := h.recipeService.List(c.Request.Context(), userID, q,
-		c.Query("keyword"), c.Query("difficulty"), c.Query("tag"), c.Query("sort"),
-		c.Query("favorite") == "true")
+		c.Query("keyword"), c.Query("difficulty"), c.Query("tag"), c.Query("ingredient_tag"),
+		c.Query("sort"), c.Query("favorite") == "true")
 	if err != nil {
 		httpx.RespondErrorWithErr(c, err)
 		return
@@ -162,21 +163,16 @@ func (h *RecipeHandler) Unfavorite(c *gin.Context) {
 	httpx.RespondOK(c, gin.H{"favorited": false})
 }
 
-// Random 随机选菜
+// Random 随机选菜（tag 菜谱级标签、ingredient_tag 食材级标签、difficulty 难度）
 func (h *RecipeHandler) Random(c *gin.Context) {
 	userID := httpx.GetUserID(c)
 	rec, err := h.recipeService.Random(c.Request.Context(), userID,
-		c.Query("tag"), c.Query("difficulty"))
+		c.Query("tag"), c.Query("ingredient_tag"), c.Query("difficulty"))
 	if err != nil {
 		httpx.RespondErrorWithErr(c, err)
 		return
 	}
 	httpx.RespondOK(c, rec)
-}
-
-// TagList 预设标签词表
-func (h *RecipeHandler) TagList(c *gin.Context) {
-	httpx.RespondOK(c, tagging.TagCategories)
 }
 
 type recognizeRequest struct {
@@ -199,6 +195,15 @@ func (h *RecipeHandler) Recognize(c *gin.Context) {
 		httpx.RespondError(c, http.StatusBadRequest, httpx.CodeBadRequest, "识别失败: "+err.Error())
 		return
 	}
+
+	// AI 返回的是标签名，统一归一化为标签 id（词表未收录的名称建为用户自定义标签）
+	tagIDs, err := h.tagService.RecognizeTagNames(c.Request.Context(), httpx.GetUserID(c), rec.Tags)
+	if err != nil {
+		httpx.RespondErrorWithErr(c, err)
+		return
+	}
+	rec.Tags = tagIDs
+
 	httpx.RespondOK(c, rec)
 }
 

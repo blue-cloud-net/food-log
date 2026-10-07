@@ -25,9 +25,10 @@ type Recipe struct {
 	Ingredients     []Ingredient `json:"ingredients"`
 	Steps           []Step       `json:"steps"`
 	CookTimeMinutes int          `json:"cook_time_minutes"`
-	Difficulty      string       `json:"difficulty"` // easy / medium / hard
-	Rating          int          `json:"rating"`     // 1-5
-	Tags            []string     `json:"tags"`
+	Difficulty      string       `json:"difficulty"`      // easy / medium / hard
+	Rating          int          `json:"rating"`          // 1-5
+	Tags            []string     `json:"tags"`            // 菜谱级标签 id（用户手选）
+	IngredientTags  []string     `json:"ingredient_tags"` // 食材级标签 id（自动匹配派生）
 	Images          []string     `json:"images"`
 	IsFavorited     bool         `json:"is_favorited"`
 	CreatedAt       time.Time    `json:"created_at"`

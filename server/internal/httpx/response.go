@@ -47,6 +47,12 @@ func RespondErrorWithErr(c *gin.Context, err error) {
 		RespondError(c, http.StatusConflict, CodeConflict, "邮箱已被注册")
 	case errors.Is(err, service.ErrInvalidCreds):
 		RespondError(c, http.StatusUnauthorized, CodeUnauthorized, "用户名或密码错误")
+	case errors.Is(err, service.ErrTagInvalid):
+		RespondError(c, http.StatusBadRequest, CodeBadRequest, err.Error())
+	case errors.Is(err, service.ErrTagDuplicate):
+		RespondError(c, http.StatusConflict, CodeConflict, "同名标签或分类已存在")
+	case errors.Is(err, service.ErrSystemTagReadonly):
+		RespondError(c, http.StatusForbidden, CodeForbidden, "系统预设标签不可修改")
 	default:
 		RespondError(c, http.StatusInternalServerError, CodeInternal, "服务器内部错误")
 	}

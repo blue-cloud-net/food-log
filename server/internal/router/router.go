@@ -29,6 +29,7 @@ func Setup(cfg *config.Config, pool *pgxpool.Pool) *gin.Engine {
 	restaurantRepo := repository.NewRestaurantRepo(pool)
 	dishRepo := repository.NewDishRepo(pool)
 	favoriteRepo := repository.NewFavoriteRepo(pool)
+	tagRepo := repository.NewTagRepo(pool)
 
 	// AI Provider（未配置则 nil，自动标签/识别静默降级或明确报错）
 	var aiProvider ai.Provider
@@ -39,14 +40,16 @@ func Setup(cfg *config.Config, pool *pgxpool.Pool) *gin.Engine {
 	}
 
 	authService := service.NewAuthService(userRepo, cfg.JWTSecret)
-	recipeService := service.NewRecipeService(recipeRepo, favoriteRepo, aiProvider)
+	tagService := service.NewTagService(tagRepo, aiProvider)
+	recipeService := service.NewRecipeService(pool, recipeRepo, favoriteRepo, tagRepo, tagService)
 	restaurantService := service.NewRestaurantService(restaurantRepo, dishRepo)
 	uploadService := service.NewUploadService(cfg.UploadDir)
 	searchService := service.NewSearchService(recipeRepo, restaurantRepo, dishRepo)
-	exportService := service.NewExportService(pool, recipeRepo, restaurantRepo, dishRepo, favoriteRepo)
+	exportService := service.NewExportService(pool, recipeRepo, restaurantRepo, dishRepo, favoriteRepo, tagRepo, tagService)
 
 	authHandler := handler.NewAuthHandler(authService)
-	recipeHandler := handler.NewRecipeHandler(recipeService, aiProvider)
+	recipeHandler := handler.NewRecipeHandler(recipeService, tagService, aiProvider)
+	tagHandler := handler.NewTagHandler(tagService)
 	restaurantHandler := handler.NewRestaurantHandler(restaurantService)
 	uploadHandler := handler.NewUploadHandler(uploadService)
 	searchHandler := handler.NewSearchHandler(searchService)
@@ -75,7 +78,7 @@ func Setup(cfg *config.Config, pool *pgxpool.Pool) *gin.Engine {
 			recipes.GET("", recipeHandler.List)
 			recipes.POST("", recipeHandler.Create)
 			// 静态路由需在 /:id 之前注册，避免被参数路由捕获
-			recipes.GET("/tags", recipeHandler.TagList)
+			recipes.GET("/tags", tagHandler.List)
 			recipes.GET("/random", recipeHandler.Random)
 			recipes.POST("/ai/recognize", recipeHandler.Recognize)
 			recipes.GET("/:id", recipeHandler.Get)
@@ -105,6 +108,20 @@ func Setup(cfg *config.Config, pool *pgxpool.Pool) *gin.Engine {
 
 		// 全局搜索
 		api.GET("/search", authMW, searchHandler.Search)
+
+		// 标签字典（自定义分类/标签维护）
+		tagsManage := api.Group("/tags", authMW)
+		{
+			tagsManage.POST("", tagHandler.CreateTag)
+			tagsManage.PUT("/:id", tagHandler.UpdateTag)
+			tagsManage.DELETE("/:id", tagHandler.DeleteTag)
+		}
+		tagCategories := api.Group("/tag-categories", authMW)
+		{
+			tagCategories.POST("", tagHandler.CreateCategory)
+			tagCategories.PUT("/:id", tagHandler.UpdateCategory)
+			tagCategories.DELETE("/:id", tagHandler.DeleteCategory)
+		}
 
 		// 数据导出/导入
 		api.GET("/export", authMW, exportHandler.Export)

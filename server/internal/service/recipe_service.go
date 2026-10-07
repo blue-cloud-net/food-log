@@ -4,7 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"foodlog/server/internal/ai"
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"foodlog/server/internal/model"
 	"foodlog/server/internal/repository"
 	"foodlog/server/internal/tagging"
@@ -12,48 +13,105 @@ import (
 
 var ErrForbidden = errors.New("无权操作此资源")
 
-// tagCompleter 把 ai.Provider 适配为 tagging.Completer
-type tagCompleter struct{ p ai.Provider }
-
-func (c tagCompleter) CompleteTags(ctx context.Context, prompt string) ([]string, error) {
-	return c.p.CompleteTags(ctx, prompt, "")
-}
-
 // RecipeService 菜谱服务
 type RecipeService struct {
+	pool         *pgxpool.Pool
 	recipeRepo   *repository.RecipeRepo
 	favoriteRepo *repository.FavoriteRepo
-	aiProvider   ai.Provider // 可为 nil（禁用 AI 兜底）
+	tagRepo      *repository.TagRepo
+	tagService   *TagService
 }
 
-func NewRecipeService(recipeRepo *repository.RecipeRepo, favoriteRepo *repository.FavoriteRepo, aiProvider ai.Provider) *RecipeService {
-	return &RecipeService{recipeRepo: recipeRepo, favoriteRepo: favoriteRepo, aiProvider: aiProvider}
+func NewRecipeService(
+	pool *pgxpool.Pool,
+	recipeRepo *repository.RecipeRepo,
+	favoriteRepo *repository.FavoriteRepo,
+	tagRepo *repository.TagRepo,
+	tagService *TagService,
+) *RecipeService {
+	return &RecipeService{
+		pool:         pool,
+		recipeRepo:   recipeRepo,
+		favoriteRepo: favoriteRepo,
+		tagRepo:      tagRepo,
+		tagService:   tagService,
+	}
 }
 
-// enrichTags 根据菜谱内容自动生成标签并与手动标签合并
-func (s *RecipeService) enrichTags(ctx context.Context, rec *model.Recipe) {
+// prepareTags 校验手动标签，并依据规则推导食材级标签（自动部分剔除与手选重复的项）
+func (s *RecipeService) prepareTags(ctx context.Context, userID string, rec *model.Recipe) error {
+	manual, err := s.tagService.ResolveManualTags(ctx, userID, rec.Tags)
+	if err != nil {
+		return err
+	}
+	rec.Tags = manual
+	rec.IngredientTags = s.tagService.ComputeIngredientTags(ctx, userID, taggingInput(rec), manual)
+	return nil
+}
+
+func taggingInput(rec *model.Recipe) tagging.Input {
 	names := make([]string, len(rec.Ingredients))
 	for i, ing := range rec.Ingredients {
 		names[i] = ing.Name
 	}
-	in := tagging.Input{
+	return tagging.Input{
 		Name:            rec.Name,
 		Description:     rec.Description,
 		Ingredients:     names,
 		CookTimeMinutes: rec.CookTimeMinutes,
 	}
-	var completer tagging.Completer
-	if s.aiProvider != nil {
-		completer = tagCompleter{p: s.aiProvider}
-	}
-	rec.Tags = tagging.Generate(ctx, in, rec.Tags, completer)
 }
 
-// Create 创建菜谱
+// fillTags 批量填充菜谱的菜谱级与食材级标签 id
+func (s *RecipeService) fillTags(ctx context.Context, list []*model.Recipe) {
+	if len(list) == 0 {
+		return
+	}
+	ids := make([]string, len(list))
+	for i, r := range list {
+		ids[i] = r.ID
+	}
+	manual, ingredient, err := s.tagRepo.TagsForRecipes(ctx, ids)
+	if err != nil {
+		return
+	}
+	for _, r := range list {
+		if v, ok := manual[r.ID]; ok {
+			r.Tags = v
+		} else {
+			r.Tags = []string{}
+		}
+		if v, ok := ingredient[r.ID]; ok {
+			r.IngredientTags = v
+		} else {
+			r.IngredientTags = []string{}
+		}
+	}
+}
+
+// Create 创建菜谱（菜谱行 + 两组标签关联在同一事务内写入）
 func (s *RecipeService) Create(ctx context.Context, userID string, rec *model.Recipe) (*model.Recipe, error) {
 	rec.UserID = userID
-	s.enrichTags(ctx, rec)
-	if err := s.recipeRepo.Create(ctx, rec); err != nil {
+	if err := s.prepareTags(ctx, userID, rec); err != nil {
+		return nil, err
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // 提交成功后回滚为无操作
+
+	if err := s.recipeRepo.CreateTx(ctx, tx, rec); err != nil {
+		return nil, err
+	}
+	if err := s.tagRepo.ReplaceRecipeTagsTx(ctx, tx, rec.ID, rec.Tags); err != nil {
+		return nil, err
+	}
+	if err := s.tagRepo.ReplaceRecipeIngredientTagsTx(ctx, tx, rec.ID, rec.IngredientTags); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 	return rec, nil
@@ -71,6 +129,7 @@ func (s *RecipeService) Get(ctx context.Context, userID, id string) (*model.Reci
 	if rec.UserID != userID {
 		return nil, ErrForbidden
 	}
+	s.fillTags(ctx, []*model.Recipe{rec})
 	s.fillFavorited(ctx, userID, []*model.Recipe{rec})
 	return rec, nil
 }
@@ -94,11 +153,13 @@ func (s *RecipeService) fillFavorited(ctx context.Context, userID string, list [
 }
 
 // List 菜谱列表
-func (s *RecipeService) List(ctx context.Context, userID string, q *model.PageQuery, keyword, difficulty, tag, sort string, isFavorite bool) (*model.Paginated, error) {
-	list, total, err := s.recipeRepo.List(ctx, userID, q, keyword, difficulty, tag, sort, isFavorite)
+// tagID 过滤菜谱级标签，ingredientTagID 过滤食材级标签
+func (s *RecipeService) List(ctx context.Context, userID string, q *model.PageQuery, keyword, difficulty, tagID, ingredientTagID, sort string, isFavorite bool) (*model.Paginated, error) {
+	list, total, err := s.recipeRepo.List(ctx, userID, q, keyword, difficulty, tagID, ingredientTagID, sort, isFavorite)
 	if err != nil {
 		return nil, err
 	}
+	s.fillTags(ctx, list)
 	if isFavorite {
 		for _, r := range list {
 			r.IsFavorited = true
@@ -113,7 +174,7 @@ func (s *RecipeService) List(ctx context.Context, userID string, q *model.PageQu
 	return &model.Paginated{List: items, Total: total, Page: q.Page, PageSize: q.PageSize}, nil
 }
 
-// Update 更新菜谱（校验归属）
+// Update 更新菜谱（校验归属，菜谱行 + 两组标签关联在同一事务内写入）
 func (s *RecipeService) Update(ctx context.Context, userID, id string, rec *model.Recipe) (*model.Recipe, error) {
 	existing, err := s.Get(ctx, userID, id)
 	if err != nil {
@@ -121,8 +182,26 @@ func (s *RecipeService) Update(ctx context.Context, userID, id string, rec *mode
 	}
 	rec.ID = existing.ID
 	rec.UserID = existing.UserID
-	s.enrichTags(ctx, rec)
-	if err := s.recipeRepo.Update(ctx, rec); err != nil {
+	if err := s.prepareTags(ctx, userID, rec); err != nil {
+		return nil, err
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // 提交成功后回滚为无操作
+
+	if err := s.recipeRepo.UpdateTx(ctx, tx, rec); err != nil {
+		return nil, err
+	}
+	if err := s.tagRepo.ReplaceRecipeTagsTx(ctx, tx, rec.ID, rec.Tags); err != nil {
+		return nil, err
+	}
+	if err := s.tagRepo.ReplaceRecipeIngredientTagsTx(ctx, tx, rec.ID, rec.IngredientTags); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 	return rec, nil
@@ -154,14 +233,15 @@ func (s *RecipeService) Unfavorite(ctx context.Context, userID, id string) error
 }
 
 // Random 随机获取一条菜谱（可按标签/难度过滤）
-func (s *RecipeService) Random(ctx context.Context, userID, tag, difficulty string) (*model.Recipe, error) {
-	rec, err := s.recipeRepo.Random(ctx, userID, tag, difficulty)
+func (s *RecipeService) Random(ctx context.Context, userID, tagID, ingredientTagID, difficulty string) (*model.Recipe, error) {
+	rec, err := s.recipeRepo.Random(ctx, userID, tagID, ingredientTagID, difficulty)
 	if err != nil {
 		return nil, err
 	}
 	if rec == nil {
 		return nil, ErrNotFound
 	}
+	s.fillTags(ctx, []*model.Recipe{rec})
 	s.fillFavorited(ctx, userID, []*model.Recipe{rec})
 	return rec, nil
 }
