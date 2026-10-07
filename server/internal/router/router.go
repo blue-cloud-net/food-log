@@ -38,6 +38,7 @@ func Setup(cfg *config.Config, pool *pgxpool.Pool) *gin.Engine {
 	dishRepo := repository.NewDishRepo(pool)
 	favoriteRepo := repository.NewFavoriteRepo(pool)
 	tagRepo := repository.NewTagRepo(pool)
+	shopTagRepo := repository.NewShopTagRepo(pool)
 
 	// AI Provider（未配置则 nil，自动标签/识别静默降级或明确报错）
 	var aiProvider ai.Provider
@@ -49,15 +50,17 @@ func Setup(cfg *config.Config, pool *pgxpool.Pool) *gin.Engine {
 
 	authService := service.NewAuthService(userRepo, cfg.JWTSecret)
 	tagService := service.NewTagService(tagRepo, aiProvider)
+	shopTagService := service.NewShopTagService(shopTagRepo)
 	recipeService := service.NewRecipeService(pool, recipeRepo, favoriteRepo, tagRepo, tagService)
-	restaurantService := service.NewRestaurantService(restaurantRepo, dishRepo)
+	restaurantService := service.NewRestaurantService(pool, restaurantRepo, dishRepo, shopTagRepo, shopTagService)
 	uploadService := service.NewUploadService(cfg)
 	searchService := service.NewSearchService(recipeRepo, restaurantRepo, dishRepo)
-	exportService := service.NewExportService(pool, recipeRepo, restaurantRepo, dishRepo, favoriteRepo, tagRepo, tagService)
+	exportService := service.NewExportService(pool, recipeRepo, restaurantRepo, dishRepo, favoriteRepo, tagRepo, tagService, shopTagRepo, shopTagService)
 
 	authHandler := handler.NewAuthHandler(authService)
 	recipeHandler := handler.NewRecipeHandler(recipeService, tagService, aiProvider)
 	tagHandler := handler.NewTagHandler(tagService)
+	shopTagHandler := handler.NewShopTagHandler(shopTagService)
 	restaurantHandler := handler.NewRestaurantHandler(restaurantService)
 	uploadHandler := handler.NewUploadHandler(uploadService)
 	searchHandler := handler.NewSearchHandler(searchService)
@@ -101,6 +104,8 @@ func Setup(cfg *config.Config, pool *pgxpool.Pool) *gin.Engine {
 		{
 			restaurants.GET("", restaurantHandler.List)
 			restaurants.POST("", restaurantHandler.Create)
+			// 静态路由需在 /:id 之前注册，避免被参数路由捕获
+			restaurants.GET("/tags", shopTagHandler.List(repository.ShopTagDomainRestaurant))
 			restaurants.GET("/:id", restaurantHandler.Get)
 			restaurants.PUT("/:id", restaurantHandler.Update)
 			restaurants.DELETE("/:id", restaurantHandler.Delete)
@@ -110,8 +115,38 @@ func Setup(cfg *config.Config, pool *pgxpool.Pool) *gin.Engine {
 		// 菜品
 		dishes := api.Group("/dishes", authMW)
 		{
+			// 静态路由需在 /:id 之前注册
+			dishes.GET("/tags", shopTagHandler.List(repository.ShopTagDomainDish))
 			dishes.PUT("/:id", restaurantHandler.UpdateDish)
 			dishes.DELETE("/:id", restaurantHandler.DeleteDish)
+		}
+
+		// 探店标签字典：餐厅（用户自定义分类 / 标签维护）
+		restaurantTags := api.Group("/restaurant-tags", authMW)
+		{
+			restaurantTags.POST("", shopTagHandler.CreateTag(repository.ShopTagDomainRestaurant))
+			restaurantTags.PUT("/:id", shopTagHandler.UpdateTag(repository.ShopTagDomainRestaurant))
+			restaurantTags.DELETE("/:id", shopTagHandler.DeleteTag(repository.ShopTagDomainRestaurant))
+		}
+		restaurantTagCategories := api.Group("/restaurant-tag-categories", authMW)
+		{
+			restaurantTagCategories.POST("", shopTagHandler.CreateCategory(repository.ShopTagDomainRestaurant))
+			restaurantTagCategories.PUT("/:id", shopTagHandler.UpdateCategory(repository.ShopTagDomainRestaurant))
+			restaurantTagCategories.DELETE("/:id", shopTagHandler.DeleteCategory(repository.ShopTagDomainRestaurant))
+		}
+
+		// 探店标签字典：菜品
+		dishTags := api.Group("/dish-tags", authMW)
+		{
+			dishTags.POST("", shopTagHandler.CreateTag(repository.ShopTagDomainDish))
+			dishTags.PUT("/:id", shopTagHandler.UpdateTag(repository.ShopTagDomainDish))
+			dishTags.DELETE("/:id", shopTagHandler.DeleteTag(repository.ShopTagDomainDish))
+		}
+		dishTagCategories := api.Group("/dish-tag-categories", authMW)
+		{
+			dishTagCategories.POST("", shopTagHandler.CreateCategory(repository.ShopTagDomainDish))
+			dishTagCategories.PUT("/:id", shopTagHandler.UpdateCategory(repository.ShopTagDomainDish))
+			dishTagCategories.DELETE("/:id", shopTagHandler.DeleteCategory(repository.ShopTagDomainDish))
 		}
 
 		// 全局搜索
