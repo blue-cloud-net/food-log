@@ -44,9 +44,17 @@ export interface Restaurant {
   user_id: string
   name: string
   address: string
-  cuisine_type: string
   description: string
-  avg_rating: number
+  /** 餐厅标签 id（前端经 shopTagsStore 解析名称与颜色） */
+  tags: string[]
+  /** 1-5 推荐度 */
+  recommend_rating: number
+  /** 1-5 性价比 */
+  value_rating: number
+  /** 1-5 环境 */
+  ambience_rating: number
+  /** 1-5 服务 */
+  service_rating: number
   images: string[]
   lat: number | null
   lng: number | null
@@ -62,7 +70,10 @@ export interface Dish {
   name: string
   description: string
   price: number | null
+  /** 1-5（界面上展示为「推荐度」） */
   rating: number
+  /** 菜品标签 id */
+  tags: string[]
   images: string[]
   eaten_at: string | null
   created_at: string

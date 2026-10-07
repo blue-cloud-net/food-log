@@ -21,7 +21,15 @@
             <div class="min-w-0">
               <div class="font-semibold mb-1">{{ r.name }}</div>
               <div class="flex items-center gap-2 text-[13px] text-[#909399]">
-                <el-tag v-if="r.cuisine_type" size="small" effect="plain">{{ r.cuisine_type }}</el-tag>
+                <el-tag
+                  v-for="id in (r.tags || []).slice(0, 2)"
+                  :key="id"
+                  size="small"
+                  effect="plain"
+                  :type="restTagColor(id)"
+                >
+                  {{ restTagName(id) }}
+                </el-tag>
                 <span v-if="r.address">{{ r.address }}</span>
               </div>
             </div>
@@ -39,6 +47,15 @@
               <div class="font-semibold mb-1">{{ d.name }}</div>
               <div class="flex items-center gap-2 text-[13px] text-[#909399]">
                 <span v-if="d.price">💰 ¥{{ Number(d.price).toFixed(2) }}</span>
+                <el-tag
+                  v-for="id in (d.tags || []).slice(0, 2)"
+                  :key="id"
+                  size="small"
+                  effect="plain"
+                  :type="dishTagColor(id)"
+                >
+                  {{ dishTagName(id) }}
+                </el-tag>
                 <span v-if="d.description">{{ d.description }}</span>
               </div>
             </div>
@@ -61,12 +78,19 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { globalSearch } from '@/api/search'
 import type { SearchResult } from '@/api/types'
+import { useShopTagsStore } from '@/stores/shopTags'
 import { useTagsStore } from '@/stores/tags'
 import RecipeCard from '@/components/recipe/RecipeCard.vue'
 
 const route = useRoute()
 const router = useRouter()
 const tagsStore = useTagsStore()
+const shopTagsStore = useShopTagsStore()
+
+const restTagName = (id: string) => shopTagsStore.tagNameOf('restaurant', id)
+const restTagColor = (id: string) => shopTagsStore.tagColorOf('restaurant', id)
+const dishTagName = (id: string) => shopTagsStore.tagNameOf('dish', id)
+const dishTagColor = (id: string) => shopTagsStore.tagColorOf('dish', id)
 
 const keyword = computed(() => (route.query.keyword as string) || '')
 const result = ref<SearchResult | null>(null)
@@ -87,6 +111,8 @@ async function load() {
 
 onMounted(() => {
   tagsStore.ensureLoaded()
+  shopTagsStore.ensureLoaded('restaurant')
+  shopTagsStore.ensureLoaded('dish')
   load()
 })
 

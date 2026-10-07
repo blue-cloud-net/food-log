@@ -15,13 +15,30 @@
         class="w-55 md:w-full"
         @keyup.enter="load(1)"
       />
-      <el-input
-        v-model="filters.cuisine_type"
-        placeholder="菜系"
+      <el-select
+        v-model="filters.tag"
+        placeholder="标签"
+        clearable
+        filterable
+        class="w-40"
+        @change="load(1)"
+      >
+        <el-option-group v-for="g in tagOptions" :key="g.label" :label="g.label">
+          <el-option v-for="o in g.options" :key="o.value" :label="o.label" :value="o.value" />
+        </el-option-group>
+      </el-select>
+      <el-select
+        v-model="filters.sort"
+        placeholder="最近添加"
         clearable
         class="w-35"
-        @keyup.enter="load(1)"
-      />
+        @change="load(1)"
+      >
+        <el-option label="推荐度" value="recommend" />
+        <el-option label="性价比" value="value" />
+        <el-option label="环境" value="ambience" />
+        <el-option label="服务" value="service" />
+      </el-select>
       <el-button type="primary" plain @click="load(1)">查询</el-button>
     </div>
 
@@ -32,21 +49,27 @@
         class="fl-card cursor-pointer overflow-hidden p-0 transition-transform duration-150 hover:-translate-y-0.5"
         @click="router.push(`/restaurants/${r.id}`)"
       >
-        <el-image
-          v-if="r.images?.length"
-          :src="r.images[0]"
-          fit="cover"
-          class="w-full h-130px"
-        />
+        <el-image v-if="r.images?.length" :src="r.images[0]" fit="cover" class="w-full h-130px" />
         <div v-else class="w-full h-130px flex items-center justify-center bg-[#fff7f0] text-primary-light">
           <el-icon :size="30"><Shop /></el-icon>
         </div>
         <div class="px-3.5 py-3">
           <div class="font-semibold text-[15px] mb-1.5">{{ r.name }}</div>
-          <div class="flex items-center gap-2 text-[13px] text-[#909399] mb-1.5">
-            <el-tag v-if="r.cuisine_type" size="small" effect="plain">{{ r.cuisine_type }}</el-tag>
-            <span v-if="r.avg_rating" class="text-[13px]">⭐ {{ r.avg_rating }}</span>
+          <div class="flex items-center gap-2.5 text-[13px] text-[#909399] mb-1.5">
+            <span v-if="r.recommend_rating">⭐ {{ r.recommend_rating }}</span>
+            <span v-if="r.value_rating" class="text-xs">💰 性价比 {{ r.value_rating }}</span>
             <span class="text-xs">{{ r.dish_count }} 道菜</span>
+          </div>
+          <div v-if="r.tags?.length" class="flex flex-wrap gap-1.5 mb-1.5">
+            <el-tag
+              v-for="id in r.tags.slice(0, 3)"
+              :key="id"
+              size="small"
+              effect="light"
+              :type="tagColor(id)"
+            >
+              {{ tagName(id) }}
+            </el-tag>
           </div>
           <div class="text-xs text-[#b0b3b8] truncate">{{ r.address }}</div>
         </div>
@@ -68,19 +91,26 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { listRestaurants } from '@/api/restaurant'
 import type { Restaurant } from '@/api/types'
+import { useShopTagsStore } from '@/stores/shopTags'
 
 const router = useRouter()
+const shopTagsStore = useShopTagsStore()
+
 const list = ref<Restaurant[]>([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = 12
 const loading = ref(false)
 
-const filters = reactive({ keyword: '', cuisine_type: '' })
+const filters = reactive({ keyword: '', tag: '', sort: '' })
+
+const tagOptions = computed(() => shopTagsStore.groupedOptions('restaurant'))
+const tagName = (id: string) => shopTagsStore.tagNameOf('restaurant', id)
+const tagColor = (id: string) => shopTagsStore.tagColorOf('restaurant', id)
 
 async function load(p = 1) {
   loading.value = true
@@ -89,7 +119,8 @@ async function load(p = 1) {
       page: p,
       page_size: pageSize,
       keyword: filters.keyword || undefined,
-      cuisine_type: filters.cuisine_type || undefined
+      tag: filters.tag || undefined,
+      sort: filters.sort || undefined
     })
     list.value = res.list
     total.value = res.total
@@ -98,5 +129,9 @@ async function load(p = 1) {
     loading.value = false
   }
 }
-</script>
 
+onMounted(() => {
+  shopTagsStore.ensureLoaded('restaurant')
+  load(1)
+})
+</script>

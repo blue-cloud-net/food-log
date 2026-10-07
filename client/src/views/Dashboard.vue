@@ -51,8 +51,16 @@
       <div v-for="r in restaurants" :key="r.id" class="fl-card flex items-center justify-between cursor-pointer py-3.5 px-4" @click="router.push(`/restaurants/${r.id}`)">
         <div class="font-semibold">{{ r.name }}</div>
         <div class="flex items-center gap-2 text-[#909399] text-[13px]">
-          <el-tag v-if="r.cuisine_type" size="small" effect="plain">{{ r.cuisine_type }}</el-tag>
-          <span v-if="r.avg_rating">⭐ {{ r.avg_rating }}</span>
+          <el-tag
+            v-for="id in (r.tags || []).slice(0, 2)"
+            :key="id"
+            size="small"
+            effect="plain"
+            :type="restTagColor(id)"
+          >
+            {{ restTagName(id) }}
+          </el-tag>
+          <span v-if="r.recommend_rating">⭐ {{ r.recommend_rating }}</span>
         </div>
       </div>
       <el-empty v-if="!restLoading && !restaurants.length" description="还没有探店记录" :image-size="80" />
@@ -94,12 +102,17 @@ import { listRecipes, randomRecipe } from '@/api/recipe'
 import { listRestaurants } from '@/api/restaurant'
 import type { Recipe, Restaurant } from '@/api/types'
 import { useAuthStore } from '@/stores/auth'
+import { useShopTagsStore } from '@/stores/shopTags'
 import { useTagsStore } from '@/stores/tags'
 import RecipeCard from '@/components/recipe/RecipeCard.vue'
 
 const auth = useAuthStore()
 const tagsStore = useTagsStore()
+const shopTagsStore = useShopTagsStore()
 const router = useRouter()
+
+const restTagName = (id: string) => shopTagsStore.tagNameOf('restaurant', id)
+const restTagColor = (id: string) => shopTagsStore.tagColorOf('restaurant', id)
 
 const recipes = ref<Recipe[]>([])
 const restaurants = ref<Restaurant[]>([])
@@ -124,6 +137,7 @@ async function pick() {
 
 onMounted(async () => {
   tagsStore.ensureLoaded()
+  shopTagsStore.ensureLoaded('restaurant')
   recipesLoading.value = true
   restLoading.value = true
   try {

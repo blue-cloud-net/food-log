@@ -10,31 +10,58 @@
         <el-form-item label="店名" required>
           <el-input v-model="form.name" maxlength="200" placeholder="餐厅名称" />
         </el-form-item>
-        <el-form-item label="菜系">
-          <el-input v-model="form.cuisine_type" placeholder="如：川菜 / 火锅 / 海鲜" />
-        </el-form-item>
         <el-form-item label="地址">
           <el-input v-model="form.address" placeholder="地址" />
         </el-form-item>
         <el-form-item label="描述 / 备注">
-          <el-input v-model="form.description" type="textarea" :rows="3" placeholder="环境、口味、推荐菜等" />
+          <el-input
+            v-model="form.description"
+            type="textarea"
+            :rows="3"
+            placeholder="环境、口味、推荐菜等"
+          />
         </el-form-item>
-        <el-form-item label="综合评分">
-          <el-rate v-model="form.avg_rating" :max="5" allow-half />
+        <el-form-item label="探店标签（品类 / 菜系 / 场景，可自定义）">
+          <TagSelector v-model="form.tags" domain="restaurant" />
+        </el-form-item>
+        <el-form-item label="评分">
+          <div class="flex flex-col gap-1.5">
+            <div v-for="dim in ratingDims" :key="dim.key" class="flex items-center gap-3">
+              <span class="text-[13px] text-[#606266] w-16 shrink-0">{{ dim.label }}</span>
+              <el-rate v-model="form[dim.key]" :max="5" />
+            </div>
+          </div>
         </el-form-item>
         <el-form-item label="环境照片">
           <div class="flex flex-wrap gap-2.5">
             <div v-for="(img, i) in form.images" :key="img" class="relative">
-              <el-image :src="img" fit="cover" class="w-[84px] h-[84px] rounded-lg" :preview-src-list="form.images" preview-teleported />
-              <el-icon class="absolute -top-1.5 -right-1.5 bg-white rounded-full text-[#f56c6c] cursor-pointer text-lg" @click="form.images.splice(i, 1)"><CircleClose /></el-icon>
+              <el-image
+                :src="img"
+                fit="cover"
+                class="w-[84px] h-[84px] rounded-lg"
+                :preview-src-list="form.images"
+                preview-teleported
+              />
+              <el-icon
+                class="absolute -top-1.5 -right-1.5 bg-white rounded-full text-[#f56c6c] cursor-pointer text-lg"
+                @click="form.images.splice(i, 1)"
+              >
+                <CircleClose />
+              </el-icon>
             </div>
             <el-upload :http-request="customUpload" :show-file-list="false" accept="image/*" multiple>
-              <div class="w-[84px] h-[84px] border border-dashed border-[#d9d9d9] rounded-lg flex items-center justify-center text-[#909399] cursor-pointer"><el-icon :size="22"><Plus /></el-icon></div>
+              <div
+                class="w-[84px] h-[84px] border border-dashed border-[#d9d9d9] rounded-lg flex items-center justify-center text-[#909399] cursor-pointer"
+              >
+                <el-icon :size="22"><Plus /></el-icon>
+              </div>
             </el-upload>
           </div>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" size="large" :loading="saving" style="width: 100%" @click="save">保存餐厅</el-button>
+          <el-button type="primary" size="large" :loading="saving" style="width: 100%" @click="save">
+            保存餐厅
+          </el-button>
         </el-form-item>
       </el-form>
     </div>
@@ -48,35 +75,47 @@ import { ElMessage } from 'element-plus'
 import type { UploadRequestOptions } from 'element-plus'
 import { createRestaurant, getRestaurant, updateRestaurant } from '@/api/restaurant'
 import { uploadImages } from '@/api/upload'
-import type { Restaurant } from '@/api/types'
+import TagSelector from '@/components/common/TagSelector.vue'
 
 const route = useRoute()
 const router = useRouter()
 const isEdit = !!route.params.id
 const saving = ref(false)
-const restaurant = ref<Restaurant | null>(null)
+
+// 评分维度（1-5，0 表示未评分）
+const ratingDims = [
+  { key: 'recommend_rating', label: '推荐度' },
+  { key: 'value_rating', label: '性价比' },
+  { key: 'ambience_rating', label: '环境' },
+  { key: 'service_rating', label: '服务' }
+] as const
 
 const form = reactive({
   name: '',
-  cuisine_type: '',
   address: '',
   description: '',
-  avg_rating: 0,
+  tags: [] as string[],
+  recommend_rating: 0,
+  value_rating: 0,
+  ambience_rating: 0,
+  service_rating: 0,
   images: [] as string[]
 })
 
 onMounted(async () => {
-  if (isEdit) {
-    restaurant.value = await getRestaurant(route.params.id as string)
-    Object.assign(form, {
-      name: restaurant.value.name,
-      cuisine_type: restaurant.value.cuisine_type,
-      address: restaurant.value.address,
-      description: restaurant.value.description,
-      avg_rating: restaurant.value.avg_rating,
-      images: [...(restaurant.value.images || [])]
-    })
-  }
+  if (!isEdit) return
+  const restaurant = await getRestaurant(route.params.id as string)
+  Object.assign(form, {
+    name: restaurant.name,
+    address: restaurant.address,
+    description: restaurant.description,
+    tags: [...(restaurant.tags || [])],
+    recommend_rating: restaurant.recommend_rating,
+    value_rating: restaurant.value_rating,
+    ambience_rating: restaurant.ambience_rating,
+    service_rating: restaurant.service_rating,
+    images: [...(restaurant.images || [])]
+  })
 })
 
 async function customUpload(options: UploadRequestOptions) {
@@ -108,4 +147,3 @@ async function save() {
   }
 }
 </script>
-
