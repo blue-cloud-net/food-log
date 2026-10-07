@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   db:
     image: postgres:16-alpine
@@ -19,6 +17,24 @@ services:
       timeout: 5s
       retries: 10
 
+  # 一次性迁移服务：db 就绪后按序执行 server/migrations/*.sql
+  # 用 schema_migrations 表记录已执行文件，重复 compose up 时自动跳过
+  migrate:
+    image: postgres:16-alpine
+    container_name: foodlog-migrate
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-foodlog}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-foodlog123}
+      POSTGRES_DB: ${POSTGRES_DB:-foodlog}
+    volumes:
+      - ./server/migrations:/migrations:ro
+      - ./scripts/migrate-docker.sh:/usr/local/bin/migrate-docker.sh:ro
+    command: ["/bin/sh", "/usr/local/bin/migrate-docker.sh"]
+
   server:
     build:
       context: ./server
@@ -37,8 +53,8 @@ services:
       AI_MODEL: ${AI_MODEL:-}
       AI_TIMEOUT: ${AI_TIMEOUT:-3}
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
       - uploads:/app/uploads
     ports:
