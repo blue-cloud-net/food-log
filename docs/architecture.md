@@ -244,7 +244,7 @@ graph LR
     A[用户] -->|8080| B[app 容器 / Go 单进程]
     B -->|/api| C[API 路由]
     B -->|/images| D[图片静态服务]
-    B -->|其余路径| E[内嵌前端 SPA]
+    B -->|其余路径| E[前端 SPA 静态资源]
     B -->|SQL| F[PostgreSQL :5432]
     B -->|读写| G[./data 数据目录]
     B -->|启动时| H[Schema 迁移 + admin 引导]
@@ -252,7 +252,7 @@ graph LR
 
 两个容器通过 Docker Compose 编排（`db` + `app`）：
 
-- **app 单镜像**：前端构建产物通过 `go:embed` 编进 Go 二进制，同一进程提供 API、图片静态资源与 SPA（含深链接回退），不再需要 Nginx
+- **app 单镜像**：前端构建产物以静态文件形式拷进镜像（`/app/dist`），Go 进程运行时从磁盘读取（`STATIC_DIR`），不使用 `go:embed`；同一进程提供 API、图片静态资源与 SPA（含深链接回退），不再需要 Nginx
 - **数据持久化**：PostgreSQL 使用命名卷 `foodlog-pgdata`；应用数据（凭证 / 上传中转 / 图片）使用宿主机目录 `./data`（容器内 `/app/data`）
 - **启动自愈**：app 启动时检测空库并初始化，随后执行增量迁移；生产模式还会按环境变量引导 admin 账号
 
@@ -274,7 +274,7 @@ graph LR
 
 ```
 food-log/
-├── Dockerfile               # 单镜像构建（前端构建 → go:embed → Go 二进制）
+├── Dockerfile               # 单镜像构建（前端构建 → 静态产物拷入镜像 → Go 二进制）
 ├── docker-compose.yml       # 生产编排（db + app）
 ├── docker-compose.dev.yml   # 开发编排（db + server[air] + client[Vite]）
 ├── data/                    # 运行时数据（credentials / tmp / images）
@@ -285,10 +285,10 @@ food-log/
 │   ├── Dockerfile.dev       # 开发镜像（air 热重载）
 │   ├── .air.toml            # air 配置
 │   ├── internal/
-│   │   ├── config/          # 配置加载（DATA_DIR / 运行模式 / admin）
+│   │   ├── config/          # 配置加载（DATA_DIR / STATIC_DIR / 运行模式 / admin）
 │   │   ├── database/        # 连接、迁移执行、admin 引导
 │   │   ├── storage/         # 数据目录布局与中转清理
-│   │   ├── web/             # 内嵌前端产物 + SPA 服务
+│   │   ├── web/             # 前端静态目录服务 + SPA 回退（STATIC_DIR，运行时读盘）
 │   │   ├── model/           # 数据模型
 │   │   ├── repository/      # 数据访问（tag_repo 菜谱标签 / shop_tag_repo 探店标签）
 │   │   ├── service/         # 业务逻辑（含图片上传处理、tag_service / shop_tag_service）

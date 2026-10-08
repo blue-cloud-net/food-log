@@ -19,20 +19,21 @@
 | 前端 | Vue 3 + Vite + TypeScript + Element Plus + Pinia + Vue Router + PWA |
 | 后端 | Go (Gin) + pgx + JWT + imaging |
 | 数据库 | PostgreSQL 16 |
-| 部署 | Docker Compose（PostgreSQL + 单镜像：Go 内嵌前端产物） |
+| 部署 | Docker Compose（PostgreSQL + 单镜像：Go 后端 + 前端静态目录） |
 | CI/CD | GitHub Actions（main 编译检查 / tag 发布 GHCR 镜像） |
 
 ## 📂 目录结构
 
 ```
 food-log/
-├── Dockerfile               # 单镜像构建（前端构建 → go:embed → Go 二进制）
+├── Dockerfile               # 单镜像构建（前端构建 → 静态产物拷贝进镜像 → Go 二进制）
 ├── docker-compose.yml       # 生产编排（db + app）
 ├── docker-compose.dev.yml   # 开发编排（db + server[air] + client[Vite]）
 ├── data/                    # 运行时数据（credentials / tmp / images）
 ├── docs/                    # 开发文档（架构 / API / 数据库 / 标签 / 库存）
 ├── scripts/                 # 工具脚本（start-dev / stop-dev / build）
-├── server/                  # Go 后端（含内嵌迁移与前端产物）
+├── dist/                    # 本地构建的前端产物（STATIC_DIR 默认指向此目录）
+├── server/                  # Go 后端（含内嵌 SQL 迁移）
 └── client/                  # Vue 前端
 ```
 
@@ -59,7 +60,7 @@ docker compose up -d --build
 # 访问 http://localhost:8080
 ```
 
-前端产物通过 `go:embed` 编进 Go 二进制，**单一进程**同时提供 API、图片与前端页面，不再需要 Nginx。
+前端产物以静态文件形式放在镜像的 `/app/dist`，Go 进程运行时直接读取目录（`STATIC_DIR`）返回，**单一进程**同时提供 API、图片与前端页面，不再需要 Nginx。
 
 首次启动会自动完成：空库初始化 → 增量迁移 → 引导管理员账号。
 生产模式（默认）不设置 `ADMIN_PASSWORD` 时会生成随机密码并写入数据目录：
@@ -93,7 +94,7 @@ APP_IMAGE=ghcr.io/blue-cloud-net/food-log:latest docker compose up -d
 | `bash scripts/start-dev.sh` | 启动开发环境（db + air 热重载后端 + Vite 前端） |
 | `bash scripts/start-dev.sh --logs` | 同上，并持续跟踪容器日志 |
 | `bash scripts/start-dev.sh --stop` | 停止开发环境 |
-| `bash scripts/build.sh` | 本地一体化构建（前端产物 → 内嵌目录 → Go 二进制） |
+| `bash scripts/build.sh` | 本地一体化构建（前端产物 → `dist/` → Go 二进制） |
 | `docker compose up -d --build` | 生产部署 |
 | `docker compose logs -f app` | 查看应用日志 |
 
