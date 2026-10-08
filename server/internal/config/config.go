@@ -27,6 +27,7 @@ type Config struct {
 	AppEnv       string
 	ServerPort   string
 	DataDir      string
+	StaticDir    string
 	DatabaseURL  string
 	JWTSecret    string
 	ClientOrigin []string
@@ -49,6 +50,7 @@ func Load() *Config {
 		AppEnv:       getEnv("APP_ENV", EnvProduction),
 		ServerPort:   getEnv("SERVER_PORT", "8080"),
 		DataDir:      getEnv("DATA_DIR", "./data"),
+		StaticDir:    getEnv("STATIC_DIR", "./dist"),
 		DatabaseURL:  getEnv("DATABASE_URL", "postgres://foodlog:foodlog123@localhost:5432/foodlog?sslmode=disable"),
 		JWTSecret:    getEnv("JWT_SECRET", "foodlog-secret-change-me"),
 		ClientOrigin: splitOrigins(getEnv("CLIENT_ORIGIN", "http://localhost:5173")),

@@ -50,8 +50,8 @@ func main() {
 		Handler: r,
 	}
 
-	log.Printf("🍽️  Food Log 后端启动: http://localhost:%s (mode: %s, data: %s)",
-		cfg.ServerPort, cfg.AppEnv, cfg.DataDir)
+	log.Printf("🍽️  Food Log 后端启动: http://localhost:%s (mode: %s, data: %s, static: %s)",
+		cfg.ServerPort, cfg.AppEnv, cfg.DataDir, cfg.StaticDir)
 
 	// 优雅退出
 	go func() {

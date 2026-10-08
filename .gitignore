@@ -14,10 +14,6 @@ client/dist/
 # ===== Go 后端 =====
 server/bin/
 server/.air/
-# go:embed 目录：dist/ 规则会整体排除该目录，这里显式解除以保留占位文件
-!server/internal/web/dist/
-server/internal/web/dist/*
-!server/internal/web/dist/.gitkeep
 *.exe
 *.test
 *.out

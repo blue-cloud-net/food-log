@@ -206,7 +206,7 @@ func Setup(cfg *config.Config, pool *pgxpool.Pool) *gin.Engine {
 	}
 
 	// 未匹配路由：/api 走 JSON 404，/images 缺失文件返回 404，其余交给前端静态资源 + SPA 回退
-	spa := web.Handler()
+	spa := web.Handler(cfg.StaticDir)
 	r.NoRoute(func(c *gin.Context) {
 		path := c.Request.URL.Path
 		switch {
