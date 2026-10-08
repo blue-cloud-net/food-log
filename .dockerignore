@@ -13,12 +13,13 @@ logs
 **/node_modules
 client/dist
 client/.vite
+# 本地构建产物（镜像内由前端构建阶段生成）
+dist
 
 # 后端
 server/bin
 server/tmp
 server/.air
-server/internal/web/dist
 
 # 其他
 .DS_Store

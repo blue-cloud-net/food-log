@@ -17,7 +17,7 @@ COPY client/ ./
 RUN pnpm build
 
 # =============================================
-# 阶段 2：构建后端（把前端产物嵌入 Go 二进制）
+# 阶段 2：构建后端（纯 Go 二进制，不含前端产物）
 # =============================================
 FROM golang:1.26-alpine AS backend
 
@@ -27,10 +27,6 @@ COPY server/go.mod server/go.sum ./
 RUN go mod download
 
 COPY server/ ./
-
-# 用真实前端产物覆盖 dist 占位目录，供 //go:embed all:dist 嵌入
-RUN rm -rf internal/web/dist && mkdir -p internal/web/dist
-COPY --from=frontend /fe/dist/ ./internal/web/dist/
 
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /bin/server ./cmd/main.go
 
@@ -42,11 +38,17 @@ FROM alpine:3.20
 RUN apk add --no-cache ca-certificates tzdata wget
 ENV TZ=Asia/Shanghai
 
+WORKDIR /app
+
 # 数据目录：credentials / tmp / images（生产通过 bind mount 持久化）
 ENV DATA_DIR=/app/data
-RUN mkdir -p "$DATA_DIR"
+# 前端静态资源目录：由前端构建阶段拷贝，服务启动时从磁盘读取
+ENV STATIC_DIR=/app/dist
+RUN mkdir -p "$DATA_DIR" "$STATIC_DIR"
 
 COPY --from=backend /bin/server /usr/local/bin/server
+# 前端构建产物（html / assets / icons / pwa 文件），运行时按需读取
+COPY --from=frontend /fe/dist/ /app/dist/
 
 EXPOSE 8080
 

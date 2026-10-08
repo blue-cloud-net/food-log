@@ -1,7 +1,7 @@
 # =============================================
 # 生产编排：PostgreSQL + 单镜像应用
 #
-# 应用镜像内含前端静态资源（go:embed）与后端 API，单进程监听 8080。
+# 应用镜像内含前端静态资源（/app/dist）与后端 API，单进程监听 8080（不使用 go:embed）。
 # 启动时会自动完成：空库初始化 → 增量迁移 → 生产模式引导 admin 账号。
 #
 # 用法：
@@ -44,6 +44,8 @@ services:
       APP_ENV: production
       SERVER_PORT: 8080
       DATA_DIR: /app/data
+      # 前端静态资源目录（镜像内已内置，仅部署时需自定义目录才需要覆盖）
+      STATIC_DIR: /app/dist
       DATABASE_URL: postgres://${POSTGRES_USER:-foodlog}:${POSTGRES_PASSWORD:-foodlog123}@db:5432/${POSTGRES_DB:-foodlog}?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-foodlog-secret-change-me}
       CLIENT_ORIGIN: ${CLIENT_ORIGIN:-http://localhost}
